@@ -2,7 +2,7 @@
 
 Run from the repository root with:
 
-    python reachapprox/hausdorff_experiment.py
+    python reachapprox/quaddyn/hausdorff_experiment.py
 
 The script prints the mean approximate Hausdorff distances and saves
 ``hausdorff_vs_samples.png`` in the current working directory.
@@ -26,21 +26,15 @@ plt.rcParams.update(
     }
 )
 
-TITLE_SIZE = 24
-LABEL_SIZE = 24
-TICK_SIZE = 15
-LEGEND_SIZE = 17
-
 PLOT_FONT = {"fontname": "DejaVu Serif"}
-PLOT_FONT_PROP = {"family": "DejaVu Serif", "size": LEGEND_SIZE}
-
+PLOT_FONT_PROP = {"family": "DejaVu Serif"}
 
 CENTER = np.array([2.0, 0.0])
 OUTER_RADIUS = 1.0
 INNER_RADIUS = OUTER_RADIUS * np.sin(np.pi / 10.0) / np.sin(3.0 * np.pi / 10.0)
 
-TIMES = tuple(float(t) for t in np.geomspace(0.01, 0.33, 7))
-SAMPLE_SIZES = (10, 100, 1000)
+TIMES = (0.11, 0.22, 0.33)
+SAMPLE_SIZES = (1, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
 N_TRIALS = 20
 
 POLY_DEGREE = 6
@@ -52,7 +46,6 @@ RANDOM_SEED = 7
 
 FIGURE_PATH = Path("hausdorff_vs_samples.png")
 SAMPLE_FLOW_FIGURE_PATH = Path("sample_flow_schematic.png")
-
 
 @dataclass(frozen=True)
 class InitialSet:
@@ -241,45 +234,40 @@ def print_table(results: dict[tuple[str, float, int], float]) -> None:
 
 
 def plot_results(results: dict[tuple[str, float, int], float]) -> None:
-    fig, ax = plt.subplots(figsize=(6.8, 6.4), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(8.0, 5.2), constrained_layout=True)
 
-    sample_colors = {
-        10: "tab:blue",
-        100: "tab:orange",
-        1000: "tab:green",
+    time_colors = {
+        0.11: "tab:blue",
+        0.22: "tab:orange",
+        0.33: "tab:green",
     }
-    markers = {
-        10: "o",
-        100: "s",
-        1000: "D",
+    styles = {
+        ("disk", 0.11): ("o", "-", "S1 disk, t = 0.11"),
+        ("disk", 0.22): ("s", "-", "S1 disk, t = 0.22"),
+        ("disk", 0.33): ("D", "-", "S1 disk, t = 0.33"),
+        ("star", 0.11): ("^", "--", "S2 star, t = 0.11"),
+        ("star", 0.22): ("v", "--", "S2 star, t = 0.22"),
+        ("star", 0.33): ("P", "--", "S2 star, t = 0.33"),
     }
 
-    for n in SAMPLE_SIZES:
-        for set_name, linestyle, set_label in (
-            ("disk", "-", "S1 disk"),
-            ("star", "--", "S2 star"),
-        ):
-            ys = [results[(set_name, t, n)] for t in TIMES]
-            ax.plot(
-                TIMES,
-                ys,
-                color=sample_colors[n],
-                linestyle=linestyle,
-                marker=markers[n],
-                linewidth=2.0,
-                markersize=6.0,
-                label=f"{set_label}, N = {n}",
-            )
+    for key, (marker, linestyle, label) in styles.items():
+        set_name, t = key
+        ys = [results[(set_name, t, n)] for n in SAMPLE_SIZES]
+        ax.plot(
+            SAMPLE_SIZES,
+            ys,
+            color=time_colors[t],
+            linestyle=linestyle,
+            marker=marker,
+            linewidth=2.0,
+            markersize=6.0,
+            label=label,
+        )
 
-    ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xticks(TIMES)
-    ax.set_xticklabels([f"{t:.4f}" for t in TIMES], fontsize=TICK_SIZE, **PLOT_FONT)
-    ax.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
-    ax.tick_params(axis="both", which="minor", labelsize=TICK_SIZE * 0.8)
-    ax.set_xlabel("time t", fontsize=LABEL_SIZE, **PLOT_FONT)
-    ax.set_ylabel("Hausdorff distance", fontsize=LABEL_SIZE, **PLOT_FONT)
-    ax.set_title("Reachable-set approximation error", fontsize=TITLE_SIZE, **PLOT_FONT)
+    ax.set_xlabel("sample size N", **PLOT_FONT)
+    ax.set_ylabel("approximate Hausdorff distance", **PLOT_FONT)
+    ax.set_title("Reachable-set approximation error", **PLOT_FONT)
     ax.grid(True, which="both", alpha=0.28)
     ax.legend(frameon=False, prop=PLOT_FONT_PROP)
     fig.savefig(FIGURE_PATH, dpi=200, bbox_inches="tight", pad_inches=0.15)
@@ -380,7 +368,6 @@ def plot_sample_flow_schematic() -> None:
     )
     fig.savefig(SAMPLE_FLOW_FIGURE_PATH, dpi=220, bbox_inches="tight", pad_inches=0.18)
     plt.close(fig)
-
 
 def main() -> None:
     rng = np.random.default_rng(RANDOM_SEED)
