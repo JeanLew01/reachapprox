@@ -14,39 +14,25 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from matplotlib.path import Path as MplPath
 import numpy as np
 from scipy.spatial import cKDTree
-
-LABEL_SIZE = 28
-TITLE_SIZE = 28
-TICK_SIZE = 22
-LEGEND_SIZE = 22
-SCHEMATIC_LABEL_SIZE = 42
-SCHEMATIC_TITLE_SIZE = 50
-SCHEMATIC_TICK_SIZE = 34
-SCHEMATIC_LEGEND_SIZE = 42
 
 plt.rcParams.update(
     {
         "font.family": "DejaVu Serif",
         "font.serif": ["DejaVu Serif"],
-        "mathtext.fontset": "stix",
-        "font.size": LABEL_SIZE,
-        "axes.titlesize": TITLE_SIZE,
-        "axes.labelsize": LABEL_SIZE,
-        "xtick.labelsize": TICK_SIZE,
-        "ytick.labelsize": TICK_SIZE,
-        "legend.fontsize": LEGEND_SIZE,
+        "mathtext.fontset": "stix"
     }
 )
 
+TITLE_SIZE = 24
+LABEL_SIZE = 24
+TICK_SIZE = 15
+LEGEND_SIZE = 17
+
 PLOT_FONT = {"fontname": "DejaVu Serif"}
 PLOT_FONT_PROP = {"family": "DejaVu Serif", "size": LEGEND_SIZE}
-SCHEMATIC_TITLE_FONT = {"fontname": "DejaVu Serif", "fontsize": SCHEMATIC_TITLE_SIZE}
-SCHEMATIC_LABEL_FONT = {"fontname": "DejaVu Serif", "fontsize": SCHEMATIC_LABEL_SIZE}
-SCHEMATIC_FONT_PROP = {"family": "DejaVu Serif", "size": SCHEMATIC_LEGEND_SIZE}
 
 
 CENTER = np.array([2.0, 0.0])
@@ -61,7 +47,7 @@ POLY_DEGREE = 6
 REGULARIZATION = 1e-6
 GRID_RESOLUTION = 170
 N_TRUE_POINTS = 35_000
-N_SCHEMATIC_SAMPLES = 200
+N_SCHEMATIC_SAMPLES = 500
 RANDOM_SEED = 7
 
 FIGURE_PATH = Path("hausdorff_vs_samples.png")
@@ -251,48 +237,49 @@ def print_table(results: dict[tuple[str, float, int], float]) -> None:
         for t in TIMES:
             for n in SAMPLE_SIZES:
                 value = results[(set_name, t, n)]
-                print(f"{set_name:<8} {t:>8.4f} {n:>6d} {value:>18.6f}")
+                print(f"{set_name:<8} {t:>5.2f} {n:>6d} {value:>18.6f}")
 
 
 def plot_results(results: dict[tuple[str, float, int], float]) -> None:
-    fig, ax = plt.subplots(figsize=(10.5, 9.735), constrained_layout=True)
-    plot_times = np.array(TIMES, dtype=float)
+    fig, ax = plt.subplots(figsize=(6.8, 6.4), constrained_layout=True)
 
     sample_colors = {
         10: "tab:blue",
         100: "tab:orange",
         1000: "tab:green",
     }
-    styles = {
-        ("disk", 10): ("o", "-", "S1 disk, N = 10"),
-        ("disk", 100): ("s", "-", "S1 disk, N = 100"),
-        ("disk", 1000): ("D", "-", "S1 disk, N = 1000"),
-        ("star", 10): ("^", "--", "S2 star, N = 10"),
-        ("star", 100): ("v", "--", "S2 star, N = 100"),
-        ("star", 1000): ("P", "--", "S2 star, N = 1000"),
+    markers = {
+        10: "o",
+        100: "s",
+        1000: "D",
     }
 
-    for key, (marker, linestyle, label) in styles.items():
-        set_name, n = key
-        ys = [results[(set_name, t, n)] for t in TIMES]
-        ax.plot(
-            plot_times,
-            ys,
-            color=sample_colors[n],
-            linestyle=linestyle,
-            marker=marker,
-            linewidth=2.0,
-            markersize=6.0,
-            label=label,
-        )
+    for n in SAMPLE_SIZES:
+        for set_name, linestyle, set_label in (
+            ("disk", "-", "S1 disk"),
+            ("star", "--", "S2 star"),
+        ):
+            ys = [results[(set_name, t, n)] for t in TIMES]
+            ax.plot(
+                TIMES,
+                ys,
+                color=sample_colors[n],
+                linestyle=linestyle,
+                marker=markers[n],
+                linewidth=2.0,
+                markersize=6.0,
+                label=f"{set_label}, N = {n}",
+            )
 
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel("time t", **PLOT_FONT)
-    ax.set_ylabel("Hausdorff distance", **PLOT_FONT)
-    ax.set_title("Reachable-set approximation error", **PLOT_FONT)
-    ax.set_xticks(plot_times)
-    ax.set_xticklabels([f"{t:.4f}".rstrip("0").rstrip(".") for t in TIMES])
+    ax.set_xticks(TIMES)
+    ax.set_xticklabels([f"{t:.4f}" for t in TIMES], fontsize=TICK_SIZE, **PLOT_FONT)
+    ax.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
+    ax.tick_params(axis="both", which="minor", labelsize=TICK_SIZE * 0.8)
+    ax.set_xlabel("time t", fontsize=LABEL_SIZE, **PLOT_FONT)
+    ax.set_ylabel("Hausdorff distance", fontsize=LABEL_SIZE, **PLOT_FONT)
+    ax.set_title("Reachable-set approximation error", fontsize=TITLE_SIZE, **PLOT_FONT)
     ax.grid(True, which="both", alpha=0.28)
     ax.legend(frameon=False, prop=PLOT_FONT_PROP)
     fig.savefig(FIGURE_PATH, dpi=200, bbox_inches="tight", pad_inches=0.15)
@@ -317,27 +304,13 @@ def plot_sample_flow_schematic() -> None:
         ("t = 0.33", 0.33),
     ]
 
-    star_sample_color = "#0077c8"
-    disk_sample_color = "#d62828"
+    star_sample_color = "#8ecae6"
+    disk_sample_color = "#f4a6a6"
     star_boundary_color = "#023e8a"
     disk_boundary_color = "#9d0208"
 
-    fig = plt.figure(figsize=(18.0, 16.0), constrained_layout=False)
-    axes = np.array(
-        [
-            [
-                fig.add_axes([0.10, 0.60, 0.34, 0.30]),
-                fig.add_axes([0.48, 0.60, 0.34, 0.30]),
-            ],
-            [
-                fig.add_axes([0.10, 0.24, 0.34, 0.30]),
-                fig.add_axes([0.48, 0.24, 0.34, 0.30]),
-            ],
-        ]
-    )
-    legend_ax = fig.add_axes([0.12, 0.03, 0.76, 0.12])
-    legend_ax.axis("off")
-    for panel_index, (ax, (title, t)) in enumerate(zip(axes.ravel(), panels)):
+    fig, axes = plt.subplots(2, 2, figsize=(10.5, 8.8), constrained_layout=True)
+    for ax, (title, t) in zip(axes.ravel(), panels):
         if t == 0.0:
             star_points_t = star_samples
             disk_points_t = disk_samples
@@ -352,8 +325,8 @@ def plot_sample_flow_schematic() -> None:
         ax.scatter(
             disk_points_t[:, 0],
             disk_points_t[:, 1],
-            s=56,
-            alpha=0.88,
+            s=8,
+            alpha=0.48,
             color=disk_sample_color,
             linewidths=0,
             label="disk samples",
@@ -361,8 +334,8 @@ def plot_sample_flow_schematic() -> None:
         ax.scatter(
             star_points_t[:, 0],
             star_points_t[:, 1],
-            s=56,
-            alpha=0.90,
+            s=8,
+            alpha=0.56,
             color=star_sample_color,
             linewidths=0,
             label="star samples",
@@ -371,14 +344,14 @@ def plot_sample_flow_schematic() -> None:
             disk_boundary_t[:, 0],
             disk_boundary_t[:, 1],
             color=disk_boundary_color,
-            linewidth=4.0,
+            linewidth=2.2,
             label="disk boundary",
         )
         ax.plot(
             star_boundary_t[:, 0],
             star_boundary_t[:, 1],
             color=star_boundary_color,
-            linewidth=4.0,
+            linewidth=2.2,
             label="star boundary",
         )
 
@@ -390,84 +363,20 @@ def plot_sample_flow_schematic() -> None:
         ax.set_xlim(lower[0] - padding[0], upper[0] + padding[0])
         ax.set_ylim(lower[1] - padding[1], upper[1] + padding[1])
 
-        ax.set_title(title, **SCHEMATIC_TITLE_FONT)
-        ax.set_xlabel("")
-        ax.set_ylabel("")
-        if panel_index < 2:
-            ax.tick_params(axis="x", labelbottom=False)
-        ax.tick_params(axis="both", labelsize=SCHEMATIC_TICK_SIZE)
+        ax.set_title(title, **PLOT_FONT)
+        ax.set_xlabel("x", **PLOT_FONT)
+        ax.set_ylabel("y", **PLOT_FONT)
         ax.set_box_aspect(1.0)
         ax.grid(True, alpha=0.25)
 
-    legend_ax.scatter(
-        [0.03],
-        [0.66],
-        s=260,
-        color=disk_sample_color,
-        alpha=0.88,
-        transform=legend_ax.transAxes,
-        clip_on=False,
-    )
-    legend_ax.text(
-        0.09,
-        0.68,
-        "disk samples",
-        va="center",
-        ha="left",
-        transform=legend_ax.transAxes,
-        **SCHEMATIC_LABEL_FONT,
-    )
-    legend_ax.plot(
-        [0.41, 0.53],
-        [0.68, 0.68],
-        color=disk_boundary_color,
-        linewidth=4.0,
-        transform=legend_ax.transAxes,
-        clip_on=False,
-    )
-    legend_ax.text(
-        0.57,
-        0.68,
-        "disk boundary",
-        va="center",
-        ha="left",
-        transform=legend_ax.transAxes,
-        **SCHEMATIC_LABEL_FONT,
-    )
-    legend_ax.scatter(
-        [0.03],
-        [0.25],
-        s=260,
-        color=star_sample_color,
-        alpha=0.90,
-        transform=legend_ax.transAxes,
-        clip_on=False,
-    )
-    legend_ax.text(
-        0.09,
-        0.22,
-        "star samples",
-        va="center",
-        ha="left",
-        transform=legend_ax.transAxes,
-        **SCHEMATIC_LABEL_FONT,
-    )
-    legend_ax.plot(
-        [0.41, 0.53],
-        [0.22, 0.22],
-        color=star_boundary_color,
-        linewidth=4.0,
-        transform=legend_ax.transAxes,
-        clip_on=False,
-    )
-    legend_ax.text(
-        0.57,
-        0.22,
-        "star boundary",
-        va="center",
-        ha="left",
-        transform=legend_ax.transAxes,
-        **SCHEMATIC_LABEL_FONT,
+    handles, labels = axes.ravel()[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="outside lower center",
+        ncol=4,
+        frameon=False,
+        prop=PLOT_FONT_PROP,
     )
     fig.savefig(SAMPLE_FLOW_FIGURE_PATH, dpi=220, bbox_inches="tight", pad_inches=0.18)
     plt.close(fig)
