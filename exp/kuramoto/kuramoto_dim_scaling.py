@@ -6,10 +6,10 @@ Run from /home/jixia/exp with:
 
 The experiment uses the product opened-triangle initial set from the linear
 spring-mass experiment, but propagates samples through a nonlinear second-order
-Kuramoto-type oscillator network. The metric is the empirical directed
-Hausdorff / coverage error
+Kuramoto-type oscillator network. The estimator is the convex hull of the
+propagated endpoints, and the metric is a numerical directed Hausdorff error
 
-    max_{y in Y_ref_subset} min_i ||y - Y_i||.
+    max_{y in Y_ref_subset} dist(y, conv{Y_i}).
 
 For adversarial sampling, the endpoint repulsion direction is used as a
 lightweight approximate projected-gradient direction. This keeps the full
@@ -51,10 +51,10 @@ C_DAMPING = 0.1
 OMEGA0 = 1.0
 T_HORIZON = 1.0
 RHO = 0.2
-TARGET_ACCURACY = 0.01
+TARGET_ACCURACY = 0.1
 
 N_REF = 200_000
-COVERAGE_SUBSET = 20_000
+COVERAGE_SUBSET = 500
 REFERENCE_SEED = 202705
 EXPERIMENT_SEED = 314159
 
@@ -68,16 +68,24 @@ RK4_STEPS = 80
 # covariance-radius objective used for boundary-biased reconstruction.
 N_ADV = 2
 ETA = 0.1
-ADVERSARIAL_MOVE_FRACTION = 0.3
+ADVERSARIAL_MOVE_FRACTION = 0.2
 LAMBDA_REG = 1e-4
 QMC_BATCH_FACTOR = 4
+
+# Numerical projection-to-convex-hull parameters used in the directed
+# Hausdorff computation. For large N, a maximin coreset keeps the projection
+# problem tractable while preserving the exposed geometry of conv(Y_N).
+MAX_HULL_VERTICES_FOR_DISTANCE = 500
+FRANK_WOLFE_MAX_ITER = 25
+FRANK_WOLFE_CHUNK_SIZE = 128
+FRANK_WOLFE_TOL = 1e-6
 
 FIG_DIR = Path("CoRL_2026/fig")
 UNIFORM_FIG = FIG_DIR / "kuramoto_uniform_dim_scaling_error_vs_N.png"
 ADVERSARIAL_FIG = FIG_DIR / "kuramoto_adversarial_dim_scaling_error_vs_N.png"
 CSV_PATH = FIG_DIR / "kuramoto_opened_triangle_dim_scaling_results.csv"
 
-METRIC_NAME = "empirical_directed_hausdorff_coverage"
+METRIC_NAME = "directed_hausdorff_to_convex_hull"
 
 plt.rcParams.update(
     {
@@ -195,9 +203,70 @@ def propagate_kuramoto_flow(
     return X, J
 
 
-def empirical_directed_hausdorff(Y_ref_subset: np.ndarray, Y_samples: np.ndarray) -> float:
-    tree = cKDTree(Y_samples)
-    return float(tree.query(Y_ref_subset, k=1, workers=-1)[0].max())
+def farthest_point_coreset(points: np.ndarray, max_points: int, rng: np.random.Generator) -> np.ndarray:
+    """Select a maximin coreset for large convex-hull vertex sets."""
+    if points.shape[0] <= max_points:
+        return points
+
+    first = int(rng.integers(0, points.shape[0]))
+    selected = np.empty(max_points, dtype=int)
+    selected[0] = first
+    min_dist = np.linalg.norm(points - points[first], axis=1)
+    min_dist[first] = -np.inf
+
+    for k in range(1, max_points):
+        idx = int(np.argmax(min_dist))
+        selected[k] = idx
+        dist = np.linalg.norm(points - points[idx], axis=1)
+        min_dist = np.minimum(min_dist, dist)
+        min_dist[idx] = -np.inf
+
+    return points[selected]
+
+
+def directed_hausdorff_to_convex_hull(
+    Y_ref_subset: np.ndarray,
+    Y_vertices: np.ndarray,
+    rng: np.random.Generator,
+) -> float:
+    """Numerical directed Hausdorff distance from reference points to conv(Y).
+
+    Each reference point is projected onto the convex hull by Frank-Wolfe. This
+    evaluates distance to the convex hull estimator, not nearest-neighbor
+    distance to the endpoint point cloud.
+    """
+    vertices = farthest_point_coreset(Y_vertices, MAX_HULL_VERTICES_FOR_DISTANCE, rng)
+    if vertices.shape[0] == 1:
+        return float(np.linalg.norm(Y_ref_subset - vertices[0], axis=1).max())
+
+    tree = cKDTree(vertices)
+    max_dist = 0.0
+
+    for start in range(0, Y_ref_subset.shape[0], FRANK_WOLFE_CHUNK_SIZE):
+        Y = Y_ref_subset[start : start + FRANK_WOLFE_CHUNK_SIZE]
+        nearest = tree.query(Y, k=1, workers=-1)[1]
+        Z = vertices[nearest].copy()
+
+        for _ in range(FRANK_WOLFE_MAX_ITER):
+            grad = Z - Y
+            idx = np.argmin(grad @ vertices.T, axis=1)
+            S = vertices[idx]
+            direction = S - Z
+            denom = np.sum(direction * direction, axis=1)
+            active = denom > 1e-15
+            gamma = np.zeros(Y.shape[0], dtype=float)
+            gamma[active] = np.clip(
+                -np.sum((Z[active] - Y[active]) * direction[active], axis=1) / denom[active],
+                0.0,
+                1.0,
+            )
+            Z += gamma[:, None] * direction
+            if np.max(gamma * np.sqrt(np.maximum(denom, 0.0))) < FRANK_WOLFE_TOL:
+                break
+
+        max_dist = max(max_dist, float(np.linalg.norm(Y - Z, axis=1).max()))
+
+    return max_dist
 
 
 def sample_opened_triangle_qmc(num_samples: int, seed: int, rho: float = RHO) -> np.ndarray:
@@ -334,11 +403,11 @@ def run_experiment() -> list[ExperimentResult]:
 
                 X_uniform = sample_product_opened_triangles(budget, m, RHO, rng)
                 Y_uniform = propagate_kuramoto_flow(X_uniform, m)
-                uniform_error = empirical_directed_hausdorff(Y_ref_subset, Y_uniform)
+                uniform_error = directed_hausdorff_to_convex_hull(Y_ref_subset, Y_uniform, rng)
                 results.append(ExperimentResult("uniform", n, m, budget, seed, uniform_error))
 
                 Y_adv = adversarial_endpoint_samples(rng, m, budget)
-                adv_error = empirical_directed_hausdorff(Y_ref_subset, Y_adv)
+                adv_error = directed_hausdorff_to_convex_hull(Y_ref_subset, Y_adv, rng)
                 results.append(ExperimentResult("adversarial", n, m, budget, seed, adv_error))
 
             print(f"  finished N={budget}")
@@ -374,11 +443,11 @@ def plot_method(results: list[ExperimentResult], method: str, path: Path, title:
         ax.plot(SAMPLE_BUDGETS, mean, color=color, marker=marker, lw=2.0, ms=6, label=f"n={n}")
         ax.fill_between(SAMPLE_BUDGETS, lo, hi, color=color, alpha=0.20)
 
-    ax.axhline(TARGET_ACCURACY, color="red", linestyle="--", linewidth=2.0, label="r=0.01")
+    ax.axhline(TARGET_ACCURACY, color="red", linestyle="--", linewidth=2.0, label="r=0.1")
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("number of samples N", fontsize=LABEL_SIZE)
-    ax.set_ylabel("empirical directed Hausdorff error", fontsize=LABEL_SIZE)
+    ax.set_ylabel("Hausdorff error", fontsize=LABEL_SIZE)
     ax.set_title(title, fontsize=TITLE_SIZE)
     ax.tick_params(axis="both", labelsize=TICK_SIZE)
     ax.grid(True, which="both", alpha=0.28)
