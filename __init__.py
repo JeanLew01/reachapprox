@@ -1,3 +1,3 @@
-from .quaddyn import QuadraticDynamics, f_continuous
+from .illustration import QuadraticDynamics, f_continuous
 
 __all__ = ["QuadraticDynamics", "f_continuous"]

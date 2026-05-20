@@ -18,6 +18,12 @@ from matplotlib.path import Path as MplPath
 import numpy as np
 from scipy.spatial import ConvexHull, cKDTree
 
+from reachapprox.utils import flow
+from reachapprox.utils.support_estimators import (
+    approximate_support_hausdorff as approximate_hausdorff,
+    christoffel_estimator_mask,
+)
+
 plt.rcParams.update(
     {
         "font.family": "DejaVu Serif",
@@ -42,35 +48,21 @@ TIMES = tuple(float(t) for t in np.geomspace(0.01, 0.33, 13))
 SAMPLE_SIZES = (10, 100, 1000)
 N_TRIALS = 50
 
-POLY_DEGREE = 6
-REGULARIZATION = 1e-6
 GRID_RESOLUTION = 170
 N_TRUE_POINTS = 35_000
 N_SCHEMATIC_SAMPLES = 500
 RANDOM_SEED = 7
 
-FIGURE_PATH = Path("reachapprox/illustration/hausdorff_vs_samples.png")
-SAMPLE_FLOW_FIGURE_PATH = Path("sample_flow_schematic.png")
-SUPPORT_FIGURE_TEMPLATE = "christoffel_support_N{n_samples}.png"
+RESULTS_DIR = Path("reachapprox/illustration/results")
+FIGURE_PATH = RESULTS_DIR / "hausdorff_vs_samples.png"
+SAMPLE_FLOW_FIGURE_PATH = RESULTS_DIR / "sample_flow_schematic.png"
+SUPPORT_FIGURE_TEMPLATE = str(RESULTS_DIR / "christoffel_support_N{n_samples}.png")
 
 @dataclass(frozen=True)
 class InitialSet:
     name: str
     label: str
     polygon: np.ndarray | None = None
-
-
-def flow(points: np.ndarray, t: float) -> np.ndarray:
-    """Analytical flow T_t(x0, y0) = (x0 / (1 - t x0), y0)."""
-    points = np.asarray(points, dtype=float)
-    x0 = points[:, 0]
-    denominator = 1.0 - t * x0
-    if np.any(denominator <= 0.0):
-        raise ValueError("flow is singular for at least one point: 1 - t*x0 <= 0")
-
-    out = points.copy()
-    out[:, 0] = x0 / denominator
-    return out
 
 
 def star_vertices(center: np.ndarray = CENTER, outer_radius: float = OUTER_RADIUS) -> np.ndarray:
@@ -135,57 +127,6 @@ def sample_initial_set(rng: np.random.Generator, initial_set: InitialSet, n: int
     raise ValueError(f"unknown initial set {initial_set.name!r}")
 
 
-def monomial_powers(degree: int) -> list[tuple[int, int]]:
-    return [(i, total - i) for total in range(degree + 1) for i in range(total + 1)]
-
-
-def polynomial_features(points: np.ndarray, powers: list[tuple[int, int]]) -> np.ndarray:
-    x = points[:, 0]
-    y = points[:, 1]
-    features = np.empty((points.shape[0], len(powers)), dtype=float)
-    for k, (px, py) in enumerate(powers):
-        features[:, k] = (x**px) * (y**py)
-    return features
-
-
-def christoffel_estimator_mask(
-    samples: np.ndarray,
-    grid_points: np.ndarray,
-    degree: int = POLY_DEGREE,
-    regularization: float = REGULARIZATION,
-) -> np.ndarray:
-    """Classify grid points using an empirical Christoffel sublevel set."""
-    lower = grid_points.min(axis=0)
-    upper = grid_points.max(axis=0)
-    center = 0.5 * (lower + upper)
-    scale = 0.5 * (upper - lower)
-    scale[scale == 0.0] = 1.0
-
-    samples_scaled = (samples - center) / scale
-    grid_scaled = (grid_points - center) / scale
-
-    powers = monomial_powers(degree)
-    phi_samples = polynomial_features(samples_scaled, powers)
-    gram = (phi_samples.T @ phi_samples) / samples.shape[0]
-    ridge = regularization * max(float(np.trace(gram)) / gram.shape[0], 1.0)
-    gram = gram + ridge * np.eye(gram.shape[0])
-
-    inv_gram = np.linalg.pinv(gram, hermitian=True)
-    k_samples = np.einsum("ij,jk,ik->i", phi_samples, inv_gram, phi_samples)
-    threshold = float(np.max(k_samples)) * (1.0 + 1e-10)
-
-    phi_grid = polynomial_features(grid_scaled, powers)
-    k_grid = np.einsum("ij,jk,ik->i", phi_grid, inv_gram, phi_grid)
-    mask = k_grid <= threshold
-
-    if not np.any(mask):
-        distances, indices = cKDTree(grid_points).query(samples, k=1)
-        nearest_sample = int(np.argmin(distances))
-        mask[int(indices[nearest_sample])] = True
-
-    return mask
-
-
 def convex_hull_estimator_mask(samples: np.ndarray, grid_points: np.ndarray) -> np.ndarray:
     """Classify grid points inside the convex hull of the endpoint samples."""
     hull = ConvexHull(samples)
@@ -214,18 +155,6 @@ def make_grid(true_points: np.ndarray, samples: np.ndarray, resolution: int) -> 
     ys = np.linspace(lower[1], upper[1], resolution)
     xx, yy = np.meshgrid(xs, ys, indexing="xy")
     return np.column_stack((xx.ravel(), yy.ravel()))
-
-
-def approximate_hausdorff(true_points: np.ndarray, estimated_points: np.ndarray) -> float:
-    """Approximate symmetric Hausdorff distance between two point clouds."""
-    if estimated_points.shape[0] == 0:
-        return float("inf")
-
-    tree_true = cKDTree(true_points)
-    tree_est = cKDTree(estimated_points)
-    true_to_est = tree_est.query(true_points, k=1)[0].max()
-    est_to_true = tree_true.query(estimated_points, k=1)[0].max()
-    return float(max(true_to_est, est_to_true))
 
 
 def run_trial(
@@ -268,6 +197,7 @@ def plot_results(
     results: dict[tuple[str, float, int], float],
     ci_bounds: dict[tuple[str, float, int], tuple[float, float]] | None = None,
 ) -> None:
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(6.8, 6.4), constrained_layout=True)
 
     sample_colors = {
@@ -320,6 +250,7 @@ def plot_results(
 
 def plot_sample_flow_schematic() -> None:
     """Save a schematic of disk/star samples and exact transported boundaries."""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(RANDOM_SEED)
     star = InitialSet("star", "S2 star", star_vertices())
     disk = InitialSet("disk", "S1 disk")
@@ -416,6 +347,7 @@ def plot_sample_flow_schematic() -> None:
 
 def plot_christoffel_support(n_samples: int) -> Path:
     """Save Christoffel support-set estimates over all time points."""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(RANDOM_SEED)
     initial_sets = (
         InitialSet("disk", "S1 disk"),
@@ -507,6 +439,7 @@ def plot_christoffel_support_n10() -> Path:
 
 
 def main() -> None:
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(RANDOM_SEED)
     trial_seeds = RANDOM_SEED + np.arange(N_TRIALS)
     initial_sets = (
