@@ -23,8 +23,10 @@ from reachapprox import utils as ru
 
 
 SAMPLE_BUDGETS = (100, 1000)
-TIME_GRID = tuple(float(t) for t in np.geomspace(0.01, 0.28, 13))
+TIME_GRID = tuple(float(t) for t in np.geomspace(0.01, 0.33, 13))
 LINEAR_TIME_GRID = tuple(float(t) for t in np.geomspace(0.01, 2.0, 13))
+Y_SCALE_TIME_MAX = 0.28
+NEAR_EXPLOSION_FRACTION = 0.98
 TIME_SWEEP_TRIALS = 50
 REFERENCE_SAMPLES = 60_000
 CHRISTOFFEL_REFERENCE_SAMPLES = 12_000
@@ -87,10 +89,20 @@ def main_time_grid(dynamics: DynamicsSpec) -> tuple[float, ...]:
     return LINEAR_TIME_GRID if dynamics.name == "linear" else TIME_GRID
 
 
-def sweep_time_grids(dynamics: DynamicsSpec) -> tuple[tuple[str, tuple[float, ...]], ...]:
+def add_near_explosion_time(dynamics: DynamicsSpec, item: ru.InitialSet, time_grid: tuple[float, ...]) -> tuple[float, ...]:
+    if dynamics.name != "quadratic" or item.name == "disk":
+        return time_grid
+
+    near_explosion_time = NEAR_EXPLOSION_FRACTION / ru.max_x(item.geom)
+    if near_explosion_time <= max(time_grid) and all(not np.isclose(near_explosion_time, t) for t in time_grid):
+        return tuple(sorted((*time_grid, float(near_explosion_time))))
+    return time_grid
+
+
+def sweep_time_grids(dynamics: DynamicsSpec, item: ru.InitialSet) -> tuple[tuple[str, tuple[float, ...]], ...]:
     if dynamics.name == "linear":
         return (("main", LINEAR_TIME_GRID), ("inset", TIME_GRID))
-    return (("main", TIME_GRID),)
+    return (("main", add_near_explosion_time(dynamics, item, TIME_GRID)),)
 
 
 def ordered_initial_sets() -> list[ru.InitialSet]:
@@ -300,8 +312,16 @@ def fixed_time_comparison(
 def summarize_trials(values: dict[str, np.ndarray]) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
     curves = {}
     for method, arr in values.items():
-        mean = arr.mean(axis=1)
-        stderr = arr.std(axis=1, ddof=1) / np.sqrt(TIME_SWEEP_TRIALS)
+        valid_counts = np.sum(np.isfinite(arr), axis=1)
+        mean = np.full(arr.shape[0], np.nan, dtype=float)
+        stderr = np.full(arr.shape[0], np.nan, dtype=float)
+        valid_rows = valid_counts > 0
+        mean[valid_rows] = np.nanmean(arr[valid_rows], axis=1)
+        multi_sample_rows = valid_counts > 1
+        stderr[multi_sample_rows] = (
+            np.nanstd(arr[multi_sample_rows], axis=1, ddof=1) / np.sqrt(valid_counts[multi_sample_rows])
+        )
+        stderr[valid_counts == 1] = 0.0
         ci = 1.96 * stderr
         curves[method] = (mean, np.maximum(mean - ci, np.finfo(float).tiny), mean + ci)
     return curves
@@ -386,17 +406,23 @@ def run_multi_dynamics_time_sweep_ci(
     for dynamics in dynamics_specs:
         print(f"\nDynamics: {dynamics.label}")
         for item in initial_sets:
-            for grid_name, time_grid in sweep_time_grids(dynamics):
-                reference_boundaries = {
-                    t: transformed_boundary_for_dynamics(dynamics, item.geom, t)
-                    for t in time_grid
-                }
+            for grid_name, time_grid in sweep_time_grids(dynamics, item):
                 for budget in SAMPLE_BUDGETS:
                     values = {
                         "uniform": np.empty((len(time_grid), TIME_SWEEP_TRIALS), dtype=float),
                         "adversarial": np.empty((len(time_grid), TIME_SWEEP_TRIALS), dtype=float),
                     }
                     for t_index, t in enumerate(time_grid):
+                        try:
+                            reference_boundary = transformed_boundary_for_dynamics(dynamics, item.geom, t)
+                        except ValueError:
+                            values["uniform"][t_index, :] = np.nan
+                            values["adversarial"][t_index, :] = np.nan
+                            print(
+                                f"{dynamics.name:<10} {grid_name:<5} {item.label:<16} t={t:.4f} N={budget:<4d} "
+                                "singular; omitted from plot"
+                            )
+                            continue
                         for trial in range(TIME_SWEEP_TRIALS):
                             uniform_rng = np.random.default_rng(
                                 RANDOM_SEED
@@ -419,10 +445,10 @@ def run_multi_dynamics_time_sweep_ci(
                                 adv_rng, item.geom, dynamics, t, budget
                             )
                             values["uniform"][t_index, trial] = approximate_boundary_hausdorff_fast(
-                                reference_boundaries[t], uniform_hull
+                                reference_boundary, uniform_hull
                             )
                             values["adversarial"][t_index, trial] = approximate_boundary_hausdorff_fast(
-                                reference_boundaries[t], adv_hull
+                                reference_boundary, adv_hull
                             )
 
                         print(
@@ -506,17 +532,30 @@ def plot_multi_dynamics_time_sweep_ci(
     y_upper = 0.0
     for dynamics in DYNAMICS_SPECS:
         for item in initial_sets:
+            item_main_time_grid = dict(sweep_time_grids(dynamics, item))["main"]
             for budget in SAMPLE_BUDGETS:
                 for method in method_styles:
                     mean, lo, hi = curves[(dynamics.name, item.name, method, budget, "main")]
-                    y_lower = min(y_lower, float(np.min(lo)), float(np.min(mean)))
-                    y_upper = max(y_upper, float(np.max(hi)), float(np.max(mean)))
+                    time_mask = np.asarray(item_main_time_grid) <= Y_SCALE_TIME_MAX
+                    if dynamics.name == "linear":
+                        time_mask = np.ones_like(time_mask, dtype=bool)
+                    y_lower = min(y_lower, float(np.min(lo[time_mask])), float(np.min(mean[time_mask])))
+                    y_upper = max(y_upper, float(np.max(hi[time_mask])), float(np.max(mean[time_mask])))
                     if dynamics.name == "linear":
                         inset_mean, inset_lo, inset_hi = curves[
                             (dynamics.name, item.name, method, budget, "inset")
                         ]
-                        y_lower = min(y_lower, float(np.min(inset_lo)), float(np.min(inset_mean)))
-                        y_upper = max(y_upper, float(np.max(inset_hi)), float(np.max(inset_mean)))
+                        inset_time_mask = np.asarray(TIME_GRID) <= Y_SCALE_TIME_MAX
+                        y_lower = min(
+                            y_lower,
+                            float(np.min(inset_lo[inset_time_mask])),
+                            float(np.min(inset_mean[inset_time_mask])),
+                        )
+                        y_upper = max(
+                            y_upper,
+                            float(np.max(inset_hi[inset_time_mask])),
+                            float(np.max(inset_mean[inset_time_mask])),
+                        )
 
     y_lower = max(y_lower * 0.75, np.finfo(float).tiny)
     y_upper = y_upper * 1.35
@@ -524,8 +563,9 @@ def plot_multi_dynamics_time_sweep_ci(
     legend_handles = []
     legend_labels = []
     for row, dynamics in enumerate(DYNAMICS_SPECS):
-        time_grid = main_time_grid(dynamics)
         for col, item in enumerate(initial_sets):
+            time_grid = dict(sweep_time_grids(dynamics, item))["main"]
+            tick_time_grid = main_time_grid(dynamics)
             ax = axes[row, col]
             for budget in SAMPLE_BUDGETS:
                 color = sample_colors[budget]
@@ -550,8 +590,8 @@ def plot_multi_dynamics_time_sweep_ci(
             ax.set_yscale("log")
             ax.set_xlim(min(time_grid), max(time_grid))
             ax.set_ylim(y_lower, y_upper)
-            ax.set_xticks(time_grid)
-            ax.set_xticklabels([f"{t:.4f}" for t in time_grid], rotation=35, ha="right", fontsize=TICK_SIZE)
+            ax.set_xticks(tick_time_grid)
+            ax.set_xticklabels([f"{t:.4f}" for t in tick_time_grid], rotation=35, ha="right", fontsize=TICK_SIZE)
             ax.grid(True, which="both", alpha=0.28)
             ax.tick_params(axis="both", which="both", labelsize=TICK_SIZE)
             ax.tick_params(axis="y", which="both", labelleft=(col == 0))
@@ -592,7 +632,7 @@ def plot_multi_dynamics_time_sweep_ci(
                 inset.tick_params(axis="y", which="both", labelsize=8)
                 inset.tick_params(axis="both", which="both", length=2.0)
                 inset.grid(True, which="both", alpha=0.22)
-                inset.set_title(r"$t\in[0.01,0.28]$", fontsize=9)
+                inset.set_title(r"$t\in[0.01,0.33]$", fontsize=9)
 
     axes[0, 0].legend(
         legend_handles,
