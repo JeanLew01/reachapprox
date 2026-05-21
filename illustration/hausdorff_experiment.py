@@ -45,7 +45,7 @@ OUTER_RADIUS = 1.0
 INNER_RADIUS = OUTER_RADIUS * np.sin(np.pi / 10.0) / np.sin(3.0 * np.pi / 10.0)
 
 TIMES = tuple(float(t) for t in np.geomspace(0.01, 0.33, 13))
-SAMPLE_SIZES = (10, 100, 1000)
+SAMPLE_SIZES = (100, 1000)
 N_TRIALS = 50
 
 GRID_RESOLUTION = 170
@@ -201,12 +201,10 @@ def plot_results(
     fig, ax = plt.subplots(figsize=(6.8, 6.4), constrained_layout=True)
 
     sample_colors = {
-        10: "tab:blue",
         100: "tab:orange",
         1000: "tab:green",
     }
     markers = {
-        10: "o",
         100: "s",
         1000: "D",
     }
