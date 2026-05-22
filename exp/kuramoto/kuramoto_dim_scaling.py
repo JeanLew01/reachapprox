@@ -49,7 +49,7 @@ IMPROVEMENT_BUDGETS = (1, 10, 100, 1000)
 N_SEEDS = 50
 
 K_COUPLING = 1.0
-C_DAMPING = 0.1
+C_DAMPING = 0.0
 OMEGA0 = 1.0
 T_HORIZON = 1.0
 RHO = 0.2
@@ -57,7 +57,7 @@ TARGET_ACCURACY = 0.1
 
 TIME_SWEEP_DIMENSION = 10
 TIME_SWEEP_BUDGET = 10_000
-TIME_SWEEP_GRID = tuple(float(t) for t in np.linspace(0.01, 5.0, 20))
+TIME_SWEEP_GRID = tuple(float(t) for t in np.linspace(0.01, 5.0, 11))
 TIME_SWEEP_N_REF = 50_000
 TIME_SWEEP_SUBSET = 500
 TIME_SWEEP_SEEDS = 50
@@ -460,6 +460,8 @@ def load_results_csv() -> list[ExperimentResult] | None:
         for row in reader:
             if row.get("experiment") != "kuramoto":
                 continue
+            if not np.isclose(float(row.get("c", np.nan)), C_DAMPING):
+                return None
             results.append(
                 ExperimentResult(
                     method=row["method"],
@@ -552,6 +554,8 @@ def load_time_sweep_csv() -> list[TimeSweepResult] | None:
     with TIME_SWEEP_CSV_PATH.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            if not np.isclose(float(row.get("c", np.nan)), C_DAMPING):
+                return None
             results.append(
                 TimeSweepResult(
                     method=row["method"],
@@ -567,6 +571,18 @@ def load_time_sweep_csv() -> list[TimeSweepResult] | None:
     expected = len(TIME_SWEEP_GRID) * TIME_SWEEP_SEEDS * 2
     if len(results) < expected:
         return None
+    for time in TIME_SWEEP_GRID:
+        for method in ("uniform", "adversarial"):
+            count = sum(
+                1
+                for row in results
+                if row.method == method
+                and row.budget == TIME_SWEEP_BUDGET
+                and row.n == TIME_SWEEP_DIMENSION
+                and np.isclose(row.time, time)
+            )
+            if count < TIME_SWEEP_SEEDS:
+                return None
     return results
 
 

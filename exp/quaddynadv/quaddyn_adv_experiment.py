@@ -23,7 +23,7 @@ from reachapprox import utils as ru
 
 
 SAMPLE_BUDGETS = (100, 1000)
-TIME_GRID = tuple(float(t) for t in np.linspace(0.01, 0.33, 17))
+TIME_GRID = tuple(float(t) for t in np.linspace(0.01, 0.29, 17))
 LINEAR_TIME_GRID = tuple(float(t) for t in np.linspace(0.01, 2.0, 17))
 Y_SCALE_TIME_MAX = 0.28
 TIME_SWEEP_TRIALS = 50
@@ -621,7 +621,7 @@ def plot_multi_dynamics_time_sweep_ci(
                 inset.tick_params(axis="y", which="both", labelsize=8)
                 inset.tick_params(axis="both", which="both", length=2.0)
                 inset.grid(True, which="both", alpha=0.22)
-                inset.set_title(r"$t\in[0.01,0.33]$", fontsize=9)
+                inset.set_title(r"$t\in[0.01,0.29]$", fontsize=9)
 
     axes[0, 0].legend(
         legend_handles,
