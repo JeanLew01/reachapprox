@@ -23,10 +23,9 @@ from reachapprox import utils as ru
 
 
 SAMPLE_BUDGETS = (100, 1000)
-TIME_GRID = tuple(float(t) for t in np.geomspace(0.01, 0.33, 13))
-LINEAR_TIME_GRID = tuple(float(t) for t in np.geomspace(0.01, 2.0, 13))
+TIME_GRID = tuple(float(t) for t in np.linspace(0.01, 0.33, 17))
+LINEAR_TIME_GRID = tuple(float(t) for t in np.linspace(0.01, 2.0, 17))
 Y_SCALE_TIME_MAX = 0.28
-NEAR_EXPLOSION_FRACTION = 0.98
 TIME_SWEEP_TRIALS = 50
 REFERENCE_SAMPLES = 60_000
 CHRISTOFFEL_REFERENCE_SAMPLES = 12_000
@@ -89,20 +88,10 @@ def main_time_grid(dynamics: DynamicsSpec) -> tuple[float, ...]:
     return LINEAR_TIME_GRID if dynamics.name == "linear" else TIME_GRID
 
 
-def add_near_explosion_time(dynamics: DynamicsSpec, item: ru.InitialSet, time_grid: tuple[float, ...]) -> tuple[float, ...]:
-    if dynamics.name != "quadratic" or item.name == "disk":
-        return time_grid
-
-    near_explosion_time = NEAR_EXPLOSION_FRACTION / ru.max_x(item.geom)
-    if near_explosion_time <= max(time_grid) and all(not np.isclose(near_explosion_time, t) for t in time_grid):
-        return tuple(sorted((*time_grid, float(near_explosion_time))))
-    return time_grid
-
-
 def sweep_time_grids(dynamics: DynamicsSpec, item: ru.InitialSet) -> tuple[tuple[str, tuple[float, ...]], ...]:
     if dynamics.name == "linear":
         return (("main", LINEAR_TIME_GRID), ("inset", TIME_GRID))
-    return (("main", add_near_explosion_time(dynamics, item, TIME_GRID)),)
+    return (("main", TIME_GRID),)
 
 
 def ordered_initial_sets() -> list[ru.InitialSet]:
@@ -586,7 +575,7 @@ def plot_multi_dynamics_time_sweep_ci(
                         legend_handles.append(line)
                         legend_labels.append(f"N={budget}, {label}")
 
-            ax.set_xscale("log")
+            ax.set_xscale("linear")
             ax.set_yscale("log")
             ax.set_xlim(min(time_grid), max(time_grid))
             ax.set_ylim(y_lower, y_upper)
@@ -619,7 +608,7 @@ def plot_multi_dynamics_time_sweep_ci(
                             ms=2.4,
                         )
                         inset.fill_between(TIME_GRID, lo, hi, color=color, alpha=0.18)
-                inset.set_xscale("log")
+                inset.set_xscale("linear")
                 inset.set_yscale("log")
                 inset.set_xlim(min(TIME_GRID), max(TIME_GRID))
                 inset.set_xticks((TIME_GRID[0], TIME_GRID[4], TIME_GRID[8], TIME_GRID[-1]))

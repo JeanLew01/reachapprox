@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sys
+import csv
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -44,6 +45,7 @@ from reachapprox.exp.spring.spring_mass_dim_scaling import (
 
 DIMENSIONS = (2, 4, 6, 8, 10)
 SAMPLE_BUDGETS = (1, 10, 100, 1000, 10000)
+IMPROVEMENT_BUDGETS = (1, 10, 100, 1000)
 N_SEEDS = 50
 
 K_COUPLING = 1.0
@@ -52,6 +54,13 @@ OMEGA0 = 1.0
 T_HORIZON = 1.0
 RHO = 0.2
 TARGET_ACCURACY = 0.1
+
+TIME_SWEEP_DIMENSION = 10
+TIME_SWEEP_BUDGET = 10_000
+TIME_SWEEP_GRID = tuple(float(t) for t in np.linspace(0.01, 5.0, 20))
+TIME_SWEEP_N_REF = 50_000
+TIME_SWEEP_SUBSET = 500
+TIME_SWEEP_SEEDS = 50
 
 N_REF = 200_000
 COVERAGE_SUBSET = 500
@@ -83,7 +92,9 @@ FRANK_WOLFE_TOL = 1e-6
 FIG_DIR = Path("CoRL_2026/fig")
 UNIFORM_FIG = FIG_DIR / "kuramoto_uniform_dim_scaling_error_vs_N.png"
 ADVERSARIAL_FIG = FIG_DIR / "kuramoto_adversarial_dim_scaling_error_vs_N.png"
+THREE_PANEL_FIG = FIG_DIR / "kuramoto_sampling_comparison_three_panel.png"
 CSV_PATH = FIG_DIR / "kuramoto_opened_triangle_dim_scaling_results.csv"
+TIME_SWEEP_CSV_PATH = FIG_DIR / "kuramoto_time_sweep_N10000_results.csv"
 
 METRIC_NAME = "directed_hausdorff_to_convex_hull"
 
@@ -107,6 +118,17 @@ class ExperimentResult:
     n: int
     m: int
     budget: int
+    seed: int
+    error: float
+
+
+@dataclass(frozen=True)
+class TimeSweepResult:
+    method: str
+    n: int
+    m: int
+    budget: int
+    time: float
     seed: int
     error: float
 
@@ -184,21 +206,23 @@ def rk4_step_state_jacobian(X: np.ndarray, J: np.ndarray, dt: float, m: int) -> 
 def propagate_kuramoto_flow(
     X: np.ndarray,
     m: int,
+    horizon: float = T_HORIZON,
     return_jacobian: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
-    """Propagate a batch through the nonlinear flow to T=1."""
+    """Propagate a batch through the nonlinear flow to the requested horizon."""
     X = np.asarray(X, dtype=float).copy()
-    dt = T_HORIZON / RK4_STEPS
+    n_steps = max(1, int(np.ceil(RK4_STEPS * horizon / T_HORIZON)))
+    dt = horizon / n_steps
 
     if not return_jacobian:
-        for _ in range(RK4_STEPS):
+        for _ in range(n_steps):
             X = rk4_step_state(X, dt, m)
         return X
 
     n = 2 * m
     eye = np.eye(n, dtype=float)
     J = np.broadcast_to(eye, (X.shape[0], n, n)).copy()
-    for _ in range(RK4_STEPS):
+    for _ in range(n_steps):
         X, J = rk4_step_state_jacobian(X, J, dt, m)
     return X, J
 
@@ -339,6 +363,7 @@ def adversarial_endpoint_samples(
     rng: np.random.Generator,
     m: int,
     total_budget: int,
+    horizon: float = T_HORIZON,
     initial_points: np.ndarray | None = None,
 ) -> np.ndarray:
     """Generate exactly N coverage-aware adversarial endpoint samples.
@@ -353,7 +378,7 @@ def adversarial_endpoint_samples(
             if initial_points is None
             else initial_points[:1].copy()
         )
-        return propagate_kuramoto_flow(X, m)
+        return propagate_kuramoto_flow(X, m, horizon=horizon)
 
     X = (
         sample_product_opened_triangles_qmc(total_budget, m, int(rng.integers(0, 2**31 - 1)), RHO)
@@ -361,7 +386,7 @@ def adversarial_endpoint_samples(
         else np.asarray(initial_points, dtype=float)[:total_budget].copy()
     )
     for _ in range(N_ADV):
-        Y_current = propagate_kuramoto_flow(X, m)
+        Y_current = propagate_kuramoto_flow(X, m, horizon=horizon)
         nn_dist, nn_idx = cKDTree(Y_current).query(Y_current, k=2, workers=-1)
         move_count = max(1, int(round(ADVERSARIAL_MOVE_FRACTION * total_budget)))
         move_idx = np.argsort(nn_dist[:, 1])[:move_count]
@@ -372,7 +397,7 @@ def adversarial_endpoint_samples(
         grad[move_idx] = selected_grad
         X = project_product_opened_triangles(X + ETA * grad, m, RHO)
 
-    return propagate_kuramoto_flow(X, m)
+    return propagate_kuramoto_flow(X, m, horizon=horizon)
 
 
 def mean_and_ci(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -425,11 +450,135 @@ def save_results_csv(results: list[ExperimentResult]) -> None:
             )
 
 
+def load_results_csv() -> list[ExperimentResult] | None:
+    if not CSV_PATH.exists():
+        return None
+
+    results: list[ExperimentResult] = []
+    with CSV_PATH.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row.get("experiment") != "kuramoto":
+                continue
+            results.append(
+                ExperimentResult(
+                    method=row["method"],
+                    n=int(row["n"]),
+                    m=int(row["m"]),
+                    budget=int(row["N"]),
+                    seed=int(row["seed"]),
+                    error=float(row["error"]),
+                )
+            )
+
+    expected = len(DIMENSIONS) * len(SAMPLE_BUDGETS) * N_SEEDS * 2
+    if len(results) < expected:
+        return None
+    return results
+
+
 def aggregate_results(results: list[ExperimentResult], method: str, n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     values = np.empty((len(SAMPLE_BUDGETS), N_SEEDS), dtype=float)
     for i, budget in enumerate(SAMPLE_BUDGETS):
         selected = [r.error for r in results if r.method == method and r.n == n and r.budget == budget]
         values[i] = np.asarray(selected, dtype=float)
+    return mean_and_ci(values)
+
+
+def aggregate_improvement(results: list[ExperimentResult], n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    values = np.empty((len(IMPROVEMENT_BUDGETS), N_SEEDS), dtype=float)
+    for i, budget in enumerate(IMPROVEMENT_BUDGETS):
+        uniform = sorted(
+            (r for r in results if r.method == "uniform" and r.n == n and r.budget == budget),
+            key=lambda r: r.seed,
+        )
+        adversarial = sorted(
+            (r for r in results if r.method == "adversarial" and r.n == n and r.budget == budget),
+            key=lambda r: r.seed,
+        )
+        values[i] = np.asarray([u.error - a.error for u, a in zip(uniform, adversarial)], dtype=float)
+    return mean_and_ci(values)
+
+
+def run_time_sweep_experiment() -> list[TimeSweepResult]:
+    results: list[TimeSweepResult] = []
+    n = TIME_SWEEP_DIMENSION
+    m = n // 2
+    ref_rng = np.random.default_rng(REFERENCE_SEED + 90_000 + n)
+    X_ref = sample_product_opened_triangles(TIME_SWEEP_N_REF, m, RHO, ref_rng)
+    subset_size = min(TIME_SWEEP_SUBSET, TIME_SWEEP_N_REF)
+
+    print(
+        f"\nKuramoto time sweep n={n}, N={TIME_SWEEP_BUDGET}: "
+        f"reference cloud {TIME_SWEEP_N_REF}, coverage subset {subset_size}"
+    )
+    for time in TIME_SWEEP_GRID:
+        Y_ref = propagate_kuramoto_flow(X_ref, m, horizon=time)
+        for seed_index in range(TIME_SWEEP_SEEDS):
+            seed = EXPERIMENT_SEED + 900_000 + 1000 * seed_index + int(round(10_000 * time))
+            rng = np.random.default_rng(seed)
+            subset_idx = rng.choice(TIME_SWEEP_N_REF, size=subset_size, replace=False)
+            Y_ref_subset = Y_ref[subset_idx]
+
+            X_uniform = sample_product_opened_triangles(TIME_SWEEP_BUDGET, m, RHO, rng)
+            Y_uniform = propagate_kuramoto_flow(X_uniform, m, horizon=time)
+            uniform_error = directed_hausdorff_to_convex_hull(Y_ref_subset, Y_uniform, rng)
+            results.append(TimeSweepResult("uniform", n, m, TIME_SWEEP_BUDGET, time, seed, uniform_error))
+
+            Y_adv = adversarial_endpoint_samples(rng, m, TIME_SWEEP_BUDGET, horizon=time)
+            adv_error = directed_hausdorff_to_convex_hull(Y_ref_subset, Y_adv, rng)
+            results.append(TimeSweepResult("adversarial", n, m, TIME_SWEEP_BUDGET, time, seed, adv_error))
+
+        print(f"  finished t={time:.4f}")
+
+    return results
+
+
+def save_time_sweep_csv(results: list[TimeSweepResult]) -> None:
+    with TIME_SWEEP_CSV_PATH.open("w", encoding="utf-8") as f:
+        f.write("experiment,method,n,m,N,time,seed,error,K,c,omega0,T,rho,metric_name\n")
+        for row in results:
+            f.write(
+                f"kuramoto_time_sweep,{row.method},{row.n},{row.m},{row.budget},{row.time:.12g},{row.seed},"
+                f"{row.error:.12g},{K_COUPLING},{C_DAMPING},{OMEGA0},{row.time},{RHO},{METRIC_NAME}\n"
+            )
+
+
+def load_time_sweep_csv() -> list[TimeSweepResult] | None:
+    if not TIME_SWEEP_CSV_PATH.exists():
+        return None
+
+    results: list[TimeSweepResult] = []
+    with TIME_SWEEP_CSV_PATH.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            results.append(
+                TimeSweepResult(
+                    method=row["method"],
+                    n=int(row["n"]),
+                    m=int(row["m"]),
+                    budget=int(row["N"]),
+                    time=float(row["time"]),
+                    seed=int(row["seed"]),
+                    error=float(row["error"]),
+                )
+            )
+
+    expected = len(TIME_SWEEP_GRID) * TIME_SWEEP_SEEDS * 2
+    if len(results) < expected:
+        return None
+    return results
+
+
+def aggregate_time_sweep(results: list[TimeSweepResult], method: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    values = np.empty((len(TIME_SWEEP_GRID), TIME_SWEEP_SEEDS), dtype=float)
+    for i, time in enumerate(TIME_SWEEP_GRID):
+        selected = [
+            r.error
+            for r in results
+            if r.method == method and np.isclose(r.time, time) and r.budget == TIME_SWEEP_BUDGET
+        ]
+        values[i] = np.asarray(selected[:TIME_SWEEP_SEEDS], dtype=float)
     return mean_and_ci(values)
 
 
@@ -456,16 +605,84 @@ def plot_method(results: list[ExperimentResult], method: str, path: Path, title:
     plt.close(fig)
 
 
+def plot_three_panel(results: list[ExperimentResult], time_results: list[TimeSweepResult]) -> None:
+    fig, axes = plt.subplots(1, 3, figsize=(20.0, 5.8), constrained_layout=True)
+    colors = plt.cm.viridis(np.linspace(0.05, 0.9, len(DIMENSIONS)))
+    markers = ("o", "s", "D", "^", "P")
+
+    ax = axes[0]
+    for n, color, marker in zip(DIMENSIONS, colors, markers):
+        mean, lo, hi = aggregate_results(results, "uniform", n)
+        ax.plot(SAMPLE_BUDGETS, mean, color=color, marker=marker, lw=2.0, ms=6, label=f"n={n}")
+        ax.fill_between(SAMPLE_BUDGETS, lo, hi, color=color, alpha=0.20)
+    ax.axhline(TARGET_ACCURACY, color="red", linestyle="--", linewidth=2.0, label="r=0.1")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("number of samples N", fontsize=LABEL_SIZE)
+    ax.set_ylabel("Hausdorff error", fontsize=LABEL_SIZE)
+    ax.set_title("Uniform Sampling", fontsize=TITLE_SIZE)
+    ax.grid(True, which="both", alpha=0.28)
+    ax.tick_params(axis="both", labelsize=TICK_SIZE)
+    ax.legend(frameon=False, fontsize=LEGEND_SIZE)
+
+    ax = axes[1]
+    for n, color, marker in zip(DIMENSIONS, colors, markers):
+        mean, lo, hi = aggregate_improvement(results, n)
+        ax.plot(IMPROVEMENT_BUDGETS, mean, color=color, marker=marker, lw=2.0, ms=6, label=f"n={n}")
+        ax.fill_between(IMPROVEMENT_BUDGETS, lo, hi, color=color, alpha=0.20)
+    ax.axhline(0.0, color="black", linestyle=":", linewidth=1.5)
+    ax.set_xscale("log")
+    ax.set_xlabel("number of samples N", fontsize=LABEL_SIZE)
+    ax.set_ylabel("Hausdorff error reduction", fontsize=LABEL_SIZE)
+    ax.set_title("Adversarial Improvement", fontsize=TITLE_SIZE)
+    ax.grid(True, which="both", alpha=0.28)
+    ax.tick_params(axis="both", labelsize=TICK_SIZE)
+    ax.legend(frameon=False, fontsize=LEGEND_SIZE)
+
+    ax = axes[2]
+    method_styles = {
+        "uniform": ("tab:blue", "o", "uniform"),
+        "adversarial": ("tab:orange", "s", "adversarial"),
+    }
+    for method, (color, marker, label) in method_styles.items():
+        mean, lo, hi = aggregate_time_sweep(time_results, method)
+        ax.plot(TIME_SWEEP_GRID, mean, color=color, marker=marker, lw=2.0, ms=5.5, label=label)
+        ax.fill_between(TIME_SWEEP_GRID, lo, hi, color=color, alpha=0.20)
+    ax.set_xlabel("time t", fontsize=LABEL_SIZE)
+    ax.set_ylabel("Hausdorff error", fontsize=LABEL_SIZE)
+    ax.set_title(f"Time Sweep (n={TIME_SWEEP_DIMENSION}, N={TIME_SWEEP_BUDGET})", fontsize=TITLE_SIZE)
+    ax.grid(True, alpha=0.28)
+    ax.tick_params(axis="both", labelsize=TICK_SIZE)
+    ax.legend(frameon=False, fontsize=LEGEND_SIZE)
+
+    fig.savefig(THREE_PANEL_FIG, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
-    results = run_experiment()
-    save_results_csv(results)
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    results = load_results_csv()
+    if results is None:
+        results = run_experiment()
+        save_results_csv(results)
+    else:
+        print(f"Loaded cached dimension-scaling results from {CSV_PATH}")
+
+    time_results = load_time_sweep_csv()
+    if time_results is None:
+        time_results = run_time_sweep_experiment()
+        save_time_sweep_csv(time_results)
+    else:
+        print(f"Loaded cached time-sweep results from {TIME_SWEEP_CSV_PATH}")
+
     plot_method(results, "uniform", UNIFORM_FIG, "Uniform Sampling")
-    plot_method(results, "adversarial", ADVERSARIAL_FIG, "Adversarial Sampling")
+    plot_three_panel(results, time_results)
 
     print("\nSaved:")
     print(UNIFORM_FIG)
-    print(ADVERSARIAL_FIG)
+    print(THREE_PANEL_FIG)
     print(CSV_PATH)
+    print(TIME_SWEEP_CSV_PATH)
 
 
 if __name__ == "__main__":
