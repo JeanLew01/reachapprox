@@ -6,8 +6,8 @@ Run from /home/jixia/exp with:
 
 This script evaluates n_adv values, where larger n_adv implicitly increases the
 adversarial share of the endpoint cloud. For each sample budget N, it saves one
-figure with three panels
-corresponding to the disk, triangle, and opened-triangle initial sets.
+figure with three panels corresponding to the disk, opened-triangle, and
+triangle initial sets.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from reachapprox.utils.quaddyn_sampling import ETA, adversarial_gradient
 
 N_ADV_VALUES = (0, 1, 2, 3, 4)
 SAMPLE_BUDGETS = (10, 100, 1000)
-TIME_GRID = tuple(float(t) for t in np.geomspace(0.01, 0.28, 13))
+TIME_GRID = tuple(float(t) for t in np.linspace(0.01, 0.29, 15))
 N_TRIALS = 50
 RANDOM_SEED = 11
 CHRISTOFFEL_REFERENCE_SAMPLES = 12_000
@@ -40,9 +40,28 @@ LABEL_SIZE = 18
 TICK_SIZE = 12
 LEGEND_SIZE = 11
 
+plt.rcParams.update(
+    {
+        "font.family": "DejaVu Serif",
+        "font.serif": ["DejaVu Serif"],
+        "mathtext.fontset": "stix",
+    }
+)
+
 
 def n_adv_label(n_adv: int) -> str:
     return f"$n_{{adv}}={n_adv}$"
+
+
+def ordered_initial_sets() -> list[ru.InitialSet]:
+    """Return sets in plotting order: circle, opened triangle, triangle."""
+    by_name = {item.name: item for item in ru.build_equal_area_initial_sets()}
+    disk = by_name["disk"]
+    return [
+        ru.InitialSet(disk.name, "Circle", disk.geom, disk.color),
+        by_name["opened"],
+        by_name["triangle"],
+    ]
 
 
 def adversarial_endpoint_cloud_with_budget(
@@ -150,7 +169,6 @@ def plot_n_adv_curves(
             )
             ax.fill_between(TIME_GRID, lo, hi, color=color, alpha=0.20)
 
-        ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_xticks(TIME_GRID)
         ax.set_xticklabels([f"{t:.4f}" for t in TIME_GRID], rotation=35, ha="right", fontsize=TICK_SIZE)
@@ -171,7 +189,7 @@ def plot_n_adv_curves(
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    initial_sets = ru.build_equal_area_initial_sets()
+    initial_sets = ordered_initial_sets()
     saved_paths = []
 
     for budget in SAMPLE_BUDGETS:

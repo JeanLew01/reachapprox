@@ -1,0 +1,22 @@
+
+Robot arm n=3, state_dim=6, N=1000
+  finished T=0.0100
+  finished T=0.2090
+  finished T=0.4080
+  finished T=0.6070
+  finished T=0.8060
+  finished T=1.0050
+  finished T=1.2040
+  finished T=1.4030
+  finished T=1.6020
+  finished T=1.8010
+  finished T=2.0000
+
+Robot-arm time-sweep means
+n=3: T=0.01:0.0828776, T=0.21:0.0857332, T=0.41:0.0868062, T=0.61:0.089498, T=0.81:0.0910455, T=1.00:0.0919782, T=1.20:0.0936656, T=1.40:0.105414, T=1.60:0.102289, T=1.80:0.100119, T=2.00:0.100801
+
+Saved:
+/home/jixia/exp/reachapprox/exp/robotarm/results/robotarm_time_sweep_T2_n3.png
+/home/jixia/exp/reachapprox/exp/robotarm/results/robotarm_time_sweep_T2_n3.csv
+/home/jixia/exp/CoRL_2026/fig/robotarm_time_sweep_T2_n3.png
+/home/jixia/exp/CoRL_2026/fig/robotarm_time_sweep_T2_n3.csv

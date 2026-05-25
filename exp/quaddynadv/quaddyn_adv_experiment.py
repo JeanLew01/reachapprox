@@ -44,6 +44,8 @@ SUBTITLE_SIZE = 18
 LABEL_SIZE = 18
 TICK_SIZE = 12
 LEGEND_SIZE = 15
+INSET_TICK_SIZE = 12
+INSET_TITLE_SIZE = 13
 TIME_SWEEP_BOUNDARY_POINTS = 700
 
 plt.rcParams.update(
@@ -517,6 +519,30 @@ def plot_multi_dynamics_time_sweep_ci(
         "adversarial": ("--", "s", "adversarial"),
     }
 
+    def add_initial_set_inset(ax, item: ru.InitialSet) -> None:
+        inset = ax.inset_axes([0.61, 0.68, 0.27, 0.31])
+        inset.add_patch(
+            ru.polygon_patch(
+                item.geom,
+                facecolor=item.color,
+                alpha=0.30,
+                edgecolor=item.color,
+                lw=1.6,
+            )
+        )
+        centroid = item.geom.centroid
+        inset.scatter([centroid.x], [centroid.y], color="black", s=7, zorder=4)
+        minx, miny, maxx, maxy = item.geom.bounds
+        pad = 0.12 * max(maxx - minx, maxy - miny)
+        inset.set_xlim(minx - pad, maxx + pad)
+        inset.set_ylim(miny - pad, maxy + pad)
+        inset.set_aspect("equal", adjustable="box")
+        inset.set_xticks([])
+        inset.set_yticks([])
+        inset.patch.set_alpha(0.0)
+        for spine in inset.spines.values():
+            spine.set_visible(False)
+
     y_lower = np.inf
     y_upper = 0.0
     for dynamics in DYNAMICS_SPECS:
@@ -592,6 +618,9 @@ def plot_multi_dynamics_time_sweep_ci(
             if row == len(DYNAMICS_SPECS) - 1:
                 ax.set_xlabel("time t", fontsize=LABEL_SIZE)
 
+            if dynamics.name == "quadratic":
+                add_initial_set_inset(ax, item)
+
             if dynamics.name == "linear":
                 inset = ax.inset_axes([0.12, 0.56, 0.43, 0.37])
                 for budget in SAMPLE_BUDGETS:
@@ -614,14 +643,14 @@ def plot_multi_dynamics_time_sweep_ci(
                 inset.set_xticks((TIME_GRID[0], TIME_GRID[4], TIME_GRID[8], TIME_GRID[-1]))
                 inset.set_xticklabels(
                     [f"{t:.4f}" for t in (TIME_GRID[0], TIME_GRID[4], TIME_GRID[8], TIME_GRID[-1])],
-                    fontsize=8,
+                    fontsize=INSET_TICK_SIZE,
                     rotation=35,
                     ha="right",
                 )
-                inset.tick_params(axis="y", which="both", labelsize=8)
+                inset.tick_params(axis="y", which="both", labelsize=INSET_TICK_SIZE)
                 inset.tick_params(axis="both", which="both", length=2.0)
                 inset.grid(True, which="both", alpha=0.22)
-                inset.set_title(r"$t\in[0.01,0.29]$", fontsize=9)
+                inset.set_title(r"$t\in[0.01,0.29]$", fontsize=INSET_TITLE_SIZE)
 
     axes[0, 0].legend(
         legend_handles,

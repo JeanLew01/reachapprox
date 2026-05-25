@@ -5,9 +5,10 @@ Run from /home/jixia/exp with:
     .venv/bin/python -u reachapprox/exp/kuramoto/kuramoto_dim_scaling.py
 
 The experiment uses the product opened-triangle initial set from the linear
-spring-mass experiment, but propagates samples through a nonlinear second-order
-Kuramoto-type oscillator network. The estimator is the convex hull of the
-propagated endpoints, and the metric is a numerical directed Hausdorff error
+spring-mass experiment, but propagates samples through an undamped autonomous
+second-order Kuramoto-type oscillator network with active velocity feedback.
+The estimator is the convex hull of the propagated endpoints, and the metric is
+a numerical directed Hausdorff error
 
     max_{y in Y_ref_subset} dist(y, conv{Y_i}).
 
@@ -49,9 +50,10 @@ IMPROVEMENT_BUDGETS = (1, 10, 100, 1000)
 N_SEEDS = 50
 
 K_COUPLING = 1.0
-C_DAMPING = 0.0
-OMEGA0 = 1.0
-T_HORIZON = 1.0
+INERTIA = 1.0
+NATURAL_FORCING = 0.0
+GAMMA_EXCITATION = 0.1
+T_HORIZON = 0.1
 RHO = 0.2
 TARGET_ACCURACY = 0.1
 
@@ -70,6 +72,7 @@ EXPERIMENT_SEED = 314159
 # Fixed-step RK4 is vectorized over point clouds. The same scheme is used for
 # state propagation and for the variational equation in adversarial gradients.
 RK4_STEPS = 80
+RK4_REFERENCE_HORIZON = 1.0
 
 # Adversarial sampler. The routine returns exactly N endpoints for each budget.
 # Since the reported metric is endpoint-cloud coverage error, the adversarial
@@ -133,18 +136,47 @@ class TimeSweepResult:
     error: float
 
 
+def parameter_to_csv(value: float | np.ndarray) -> str:
+    """Serialize a scalar or vector parameter without using CSV commas."""
+    arr = np.asarray(value, dtype=float).reshape(-1)
+    return ";".join(f"{x:.12g}" for x in arr)
+
+
+def csv_parameter_matches(text: str | None, value: float | np.ndarray) -> bool:
+    if text is None:
+        return False
+    cached = np.fromstring(text, sep=";")
+    current = np.asarray(value, dtype=float).reshape(-1)
+    return cached.shape == current.shape and np.allclose(cached, current)
+
+
+def expand_parameter(value: float | np.ndarray, m: int, name: str) -> np.ndarray:
+    """Return a length-m parameter vector from a scalar or length-m array."""
+    arr = np.asarray(value, dtype=float)
+    if arr.ndim == 0:
+        return np.full(m, float(arr), dtype=float)
+    if arr.shape != (m,):
+        raise ValueError(f"{name} must be a scalar or a vector of length m.")
+    return arr
+
+
 def kuramoto_vector_field(X: np.ndarray, m: int) -> np.ndarray:
-    """Second-order Kuramoto-type dynamics in block order (q1,p1,...,qm,pm)."""
+    """Undamped closed-loop Kuramoto dynamics in block order (q1,p1,...,qm,pm)."""
     blocks = np.asarray(X, dtype=float).reshape(-1, m, 2)
     q = blocks[:, :, 0]
     p = blocks[:, :, 1]
+    inertia = expand_parameter(INERTIA, m, "INERTIA")
+    omega = expand_parameter(NATURAL_FORCING, m, "NATURAL_FORCING")
+    gamma = expand_parameter(GAMMA_EXCITATION, m, "GAMMA_EXCITATION")
 
     q_prev = np.roll(q, 1, axis=1)
     q_next = np.roll(q, -1, axis=1)
-    coupling = np.sin(q - q_prev) + np.sin(q - q_next)
+    coupling = np.sin(q_prev - q) + np.sin(q_next - q)
 
     dq = p
-    dp = -(OMEGA0**2) * np.sin(q) - K_COUPLING * coupling - C_DAMPING * p
+    # gamma_i * p_i is active velocity feedback (negative damping) used to
+    # generate expanding reachable sets while keeping the dynamics autonomous.
+    dp = (omega + K_COUPLING * coupling + gamma * p) / inertia
     return np.stack((dq, dp), axis=2).reshape(-1, 2 * m)
 
 
@@ -154,11 +186,13 @@ def kuramoto_jacobian(X: np.ndarray, m: int) -> np.ndarray:
     batch = X.shape[0]
     n = 2 * m
     q = X.reshape(batch, m, 2)[:, :, 0]
+    inertia = expand_parameter(INERTIA, m, "INERTIA")
+    gamma = expand_parameter(GAMMA_EXCITATION, m, "GAMMA_EXCITATION")
     q_prev = np.roll(q, 1, axis=1)
     q_next = np.roll(q, -1, axis=1)
 
-    cos_prev = np.cos(q - q_prev)
-    cos_next = np.cos(q - q_next)
+    cos_prev = np.cos(q_prev - q)
+    cos_next = np.cos(q_next - q)
 
     A = np.zeros((batch, n, n), dtype=float)
     for i in range(m):
@@ -168,12 +202,10 @@ def kuramoto_jacobian(X: np.ndarray, m: int) -> np.ndarray:
         q_next_idx = 2 * ((i + 1) % m)
 
         A[:, qi, pi] = 1.0
-        A[:, pi, pi] = -C_DAMPING
-        A[:, pi, qi] += -(OMEGA0**2) * np.cos(q[:, i]) - K_COUPLING * (
-            cos_prev[:, i] + cos_next[:, i]
-        )
-        A[:, pi, q_prev_idx] += K_COUPLING * cos_prev[:, i]
-        A[:, pi, q_next_idx] += K_COUPLING * cos_next[:, i]
+        A[:, pi, pi] = gamma[i] / inertia[i]
+        A[:, pi, qi] += -K_COUPLING * (cos_prev[:, i] + cos_next[:, i]) / inertia[i]
+        A[:, pi, q_prev_idx] += K_COUPLING * cos_prev[:, i] / inertia[i]
+        A[:, pi, q_next_idx] += K_COUPLING * cos_next[:, i] / inertia[i]
 
     return A
 
@@ -211,7 +243,7 @@ def propagate_kuramoto_flow(
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """Propagate a batch through the nonlinear flow to the requested horizon."""
     X = np.asarray(X, dtype=float).copy()
-    n_steps = max(1, int(np.ceil(RK4_STEPS * horizon / T_HORIZON)))
+    n_steps = max(1, int(np.ceil(RK4_STEPS * horizon / RK4_REFERENCE_HORIZON)))
     dt = horizon / n_steps
 
     if not return_jacobian:
@@ -278,14 +310,14 @@ def directed_hausdorff_to_convex_hull(
             direction = S - Z
             denom = np.sum(direction * direction, axis=1)
             active = denom > 1e-15
-            gamma = np.zeros(Y.shape[0], dtype=float)
-            gamma[active] = np.clip(
+            step_size = np.zeros(Y.shape[0], dtype=float)
+            step_size[active] = np.clip(
                 -np.sum((Z[active] - Y[active]) * direction[active], axis=1) / denom[active],
                 0.0,
                 1.0,
             )
-            Z += gamma[:, None] * direction
-            if np.max(gamma * np.sqrt(np.maximum(denom, 0.0))) < FRANK_WOLFE_TOL:
+            Z += step_size[:, None] * direction
+            if np.max(step_size * np.sqrt(np.maximum(denom, 0.0))) < FRANK_WOLFE_TOL:
                 break
 
         max_dist = max(max_dist, float(np.linalg.norm(Y - Z, axis=1).max()))
@@ -441,12 +473,16 @@ def run_experiment() -> list[ExperimentResult]:
 
 
 def save_results_csv(results: list[ExperimentResult]) -> None:
+    inertia_csv = parameter_to_csv(INERTIA)
+    omega_csv = parameter_to_csv(NATURAL_FORCING)
+    gamma_csv = parameter_to_csv(GAMMA_EXCITATION)
     with CSV_PATH.open("w", encoding="utf-8") as f:
-        f.write("experiment,method,n,m,N,seed,error,K,c,omega0,T,rho,metric_name\n")
+        f.write("experiment,method,n,m,N,seed,error,K,M,omega,gamma,T,rho,metric_name\n")
         for row in results:
             f.write(
                 f"kuramoto,{row.method},{row.n},{row.m},{row.budget},{row.seed},"
-                f"{row.error:.12g},{K_COUPLING},{C_DAMPING},{OMEGA0},{T_HORIZON},{RHO},{METRIC_NAME}\n"
+                f"{row.error:.12g},{K_COUPLING},{inertia_csv},{omega_csv},"
+                f"{gamma_csv},{T_HORIZON},{RHO},{METRIC_NAME}\n"
             )
 
 
@@ -460,7 +496,13 @@ def load_results_csv() -> list[ExperimentResult] | None:
         for row in reader:
             if row.get("experiment") != "kuramoto":
                 continue
-            if not np.isclose(float(row.get("c", np.nan)), C_DAMPING):
+            if not (
+                np.isclose(float(row.get("K", np.nan)), K_COUPLING)
+                and csv_parameter_matches(row.get("M"), INERTIA)
+                and csv_parameter_matches(row.get("omega"), NATURAL_FORCING)
+                and csv_parameter_matches(row.get("gamma"), GAMMA_EXCITATION)
+                and np.isclose(float(row.get("T", np.nan)), T_HORIZON)
+            ):
                 return None
             results.append(
                 ExperimentResult(
@@ -537,12 +579,16 @@ def run_time_sweep_experiment() -> list[TimeSweepResult]:
 
 
 def save_time_sweep_csv(results: list[TimeSweepResult]) -> None:
+    inertia_csv = parameter_to_csv(INERTIA)
+    omega_csv = parameter_to_csv(NATURAL_FORCING)
+    gamma_csv = parameter_to_csv(GAMMA_EXCITATION)
     with TIME_SWEEP_CSV_PATH.open("w", encoding="utf-8") as f:
-        f.write("experiment,method,n,m,N,time,seed,error,K,c,omega0,T,rho,metric_name\n")
+        f.write("experiment,method,n,m,N,time,seed,error,K,M,omega,gamma,T,rho,metric_name\n")
         for row in results:
             f.write(
                 f"kuramoto_time_sweep,{row.method},{row.n},{row.m},{row.budget},{row.time:.12g},{row.seed},"
-                f"{row.error:.12g},{K_COUPLING},{C_DAMPING},{OMEGA0},{row.time},{RHO},{METRIC_NAME}\n"
+                f"{row.error:.12g},{K_COUPLING},{inertia_csv},{omega_csv},"
+                f"{gamma_csv},{row.time},{RHO},{METRIC_NAME}\n"
             )
 
 
@@ -554,7 +600,12 @@ def load_time_sweep_csv() -> list[TimeSweepResult] | None:
     with TIME_SWEEP_CSV_PATH.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if not np.isclose(float(row.get("c", np.nan)), C_DAMPING):
+            if not (
+                np.isclose(float(row.get("K", np.nan)), K_COUPLING)
+                and csv_parameter_matches(row.get("M"), INERTIA)
+                and csv_parameter_matches(row.get("omega"), NATURAL_FORCING)
+                and csv_parameter_matches(row.get("gamma"), GAMMA_EXCITATION)
+            ):
                 return None
             results.append(
                 TimeSweepResult(

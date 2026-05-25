@@ -1,0 +1,22 @@
+
+Robot arm n=3, state_dim=6: reference 20000, subset 2000
+  finished seed 1/10
+  finished seed 2/10
+  finished seed 3/10
+  finished seed 4/10
+  finished seed 5/10
+  finished seed 6/10
+  finished seed 7/10
+  finished seed 8/10
+  finished seed 9/10
+  finished seed 10/10
+  saved n=3 adversarial results
+
+Adversarial robot-arm slopes
+n=3, dim=6, slope_all=-0.2018, slope_N>=10=-0.2122, target=-0.1667
+
+Saved:
+/home/jixia/exp/reachapprox/exp/robotarm/results/robotarm_adversarial_nadv1_dim_scaling_n3.png
+/home/jixia/exp/reachapprox/exp/robotarm/results/robotarm_adversarial_nadv1_dim_scaling_n3.csv
+/home/jixia/exp/CoRL_2026/fig/robotarm_adversarial_nadv1_dim_scaling_hausdorff_vs_N_n3.png
+/home/jixia/exp/CoRL_2026/fig/robotarm_adversarial_nadv1_dim_scaling_results_n3.csv

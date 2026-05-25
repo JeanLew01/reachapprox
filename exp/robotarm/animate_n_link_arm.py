@@ -9,25 +9,42 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-from mujoco_n_link_arm import MuJoCoNLinkArm
+from mujoco_n_link_arm import (
+    DEFAULT_GAMMA,
+    DEFAULT_KD,
+    DEFAULT_KP,
+    DEFAULT_LAMBDA,
+    DEFAULT_SIGMA,
+    DEFAULT_TAU_LIMIT,
+    MuJoCoNLinkArm,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--n", type=int, choices=(2, 3), default=2)
-    parser.add_argument("--T", type=float, default=2.0)
-    parser.add_argument(
-        "--controller_mode",
-        choices=("pd", "gravity_compensated_pd"),
-        default="pd",
-    )
+    parser.add_argument("--n", type=int, choices=(2, 3, 4), default=2)
+    parser.add_argument("--T", type=float, default=1.0)
+    parser.add_argument("--kp", type=float, default=DEFAULT_KP)
+    parser.add_argument("--kd", type=float, default=DEFAULT_KD)
+    parser.add_argument("--lambda_gain", type=float, default=DEFAULT_LAMBDA)
+    parser.add_argument("--gamma", type=float, default=DEFAULT_GAMMA)
+    parser.add_argument("--sigma", type=float, default=DEFAULT_SIGMA)
+    parser.add_argument("--tau_limit", type=float, default=DEFAULT_TAU_LIMIT)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    arm = MuJoCoNLinkArm(n=args.n, T=args.T, controller_mode=args.controller_mode)
-    q_goal = np.linspace(0.4, 0.8, args.n)
+    arm = MuJoCoNLinkArm(
+        n=args.n,
+        T=args.T,
+        kp=args.kp,
+        kd=args.kd,
+        lambda_gain=args.lambda_gain,
+        gamma=args.gamma,
+        sigma=args.sigma,
+        tau_limit=args.tau_limit,
+    )
     arm.reset(np.zeros(args.n), np.zeros(args.n))
 
     try:
@@ -35,7 +52,7 @@ def main() -> None:
             end_time = arm.data.time + args.T
             while viewer.is_running() and arm.data.time < end_time:
                 start = time.time()
-                arm.step(q_goal)
+                arm.step()
                 viewer.sync()
                 elapsed = time.time() - start
                 time.sleep(max(0.0, arm.model.opt.timestep - elapsed))

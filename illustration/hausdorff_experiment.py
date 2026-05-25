@@ -44,7 +44,7 @@ CENTER = np.array([2.0, 0.0])
 OUTER_RADIUS = 1.0
 INNER_RADIUS = OUTER_RADIUS * np.sin(np.pi / 10.0) / np.sin(3.0 * np.pi / 10.0)
 
-TIMES = tuple(float(t) for t in np.geomspace(0.01, 0.33, 13))
+TIMES = tuple(float(t) for t in np.linspace(0.01, 0.33, 17))
 SAMPLE_SIZES = (100, 1000)
 N_TRIALS = 50
 
@@ -231,7 +231,6 @@ def plot_results(
                 uppers = [ci_bounds[(set_name, t, n)][1] for t in TIMES]
                 ax.fill_between(TIMES, lowers, uppers, color=color, alpha=0.22)
 
-    ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xticks(TIMES)
     ax.set_xticklabels([f"{t:.4f}" for t in TIMES], rotation=35, ha="right", fontsize=TICK_SIZE, **PLOT_FONT)
