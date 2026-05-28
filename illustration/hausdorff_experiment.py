@@ -200,9 +200,13 @@ def plot_results(
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(6.8, 6.4), constrained_layout=True)
 
-    sample_colors = {
-        100: "tab:orange",
-        1000: "tab:green",
+    set_colors = {
+        "disk": "#d62728",
+        "star": "#1f77b4",
+    }
+    sample_linestyles = {
+        100: "-",
+        1000: "--",
     }
     markers = {
         100: "s",
@@ -210,17 +214,17 @@ def plot_results(
     }
 
     for n in SAMPLE_SIZES:
-        for set_name, linestyle, set_label in (
-            ("disk", "-", "S1 disk"),
-            ("star", "--", "S2 star"),
+        for set_name, set_label in (
+            ("disk", "S1 disk"),
+            ("star", "S2 star"),
         ):
             ys = [results[(set_name, t, n)] for t in TIMES]
-            color = sample_colors[n]
+            color = set_colors[set_name]
             ax.plot(
                 TIMES,
                 ys,
                 color=color,
-                linestyle=linestyle,
+                linestyle=sample_linestyles[n],
                 marker=markers[n],
                 linewidth=2.0,
                 markersize=5.0,
