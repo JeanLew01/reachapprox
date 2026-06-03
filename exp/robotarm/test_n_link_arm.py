@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mujoco_n_link_arm import MuJoCoNLinkArm
+from fun.mujoco_n_link_arm import MuJoCoNLinkArm
 
 
 def run_case(n: int, T: float = 1.0) -> None:

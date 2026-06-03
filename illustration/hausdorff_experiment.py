@@ -2,7 +2,7 @@
 
 Run from the repository root with:
 
-    python reachapprox/quaddyn/hausdorff_experiment.py
+    python reachapprox/illustration/hausdorff_experiment.py
 
 The script prints the mean approximate Hausdorff distances and saves
 ``hausdorff_vs_samples.png`` in the current working directory.
@@ -18,8 +18,8 @@ from matplotlib.path import Path as MplPath
 import numpy as np
 from scipy.spatial import ConvexHull, cKDTree
 
-from reachapprox.utils import flow
-from reachapprox.utils.support_estimators import (
+from reachapprox.exp.quaddynadv.fun import flow
+from reachapprox.exp.quaddynadv.fun.support_estimators import (
     approximate_support_hausdorff as approximate_hausdorff,
     christoffel_estimator_mask,
 )

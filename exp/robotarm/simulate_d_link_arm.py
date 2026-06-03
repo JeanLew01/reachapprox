@@ -3,7 +3,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-from mujoco_n_link_arm import MuJoCoNLinkArm, make_n_link_arm_xml
+from fun.mujoco_n_link_arm import MuJoCoNLinkArm, make_n_link_arm_xml
 
 
 def make_d_link_arm_xml(d: int, link_length: float = 0.5) -> str:

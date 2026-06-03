@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from reachapprox.exp.robotarm.mujoco_n_link_arm import (  # noqa: E402
+from reachapprox.exp.robotarm.fun.mujoco_n_link_arm import (  # noqa: E402
     DEFAULT_GAMMA,
     DEFAULT_KD,
     DEFAULT_KP,
@@ -28,7 +28,7 @@ from reachapprox.exp.robotarm.mujoco_n_link_arm import (  # noqa: E402
     DEFAULT_TAU_LIMIT,
     TRACKING_CONTROLLER_NAME,
 )
-from reachapprox.exp.robotarm.robotarm_dim_scaling import (  # noqa: E402
+from reachapprox.exp.robotarm.fun.dim_scaling import (  # noqa: E402
     EXPERIMENT_SEED,
     METRIC_IMPLEMENTATION,
     METRIC_NAME,
@@ -36,8 +36,8 @@ from reachapprox.exp.robotarm.robotarm_dim_scaling import (  # noqa: E402
     RHO_Q,
     RHO_V,
     controller_label,
+    directed_hausdorff_to_convex_hull,
     parse_int_tuple,
-    point_cloud_directed_hausdorff,
     propagate_endpoints,
     sample_initial_box,
 )
@@ -138,7 +138,8 @@ def run_experiment(
                     args.sigma,
                     args.tau_limit,
                 )
-                error = point_cloud_directed_hausdorff(Y_ref_subset, Y_sample)
+                metric_rng = np.random.default_rng(seed + 9_000_000)
+                error = directed_hausdorff_to_convex_hull(Y_ref_subset, Y_sample, metric_rng)
                 results.append(TimeSweepResult("uniform", n, 2 * n, args.N, time, seed, error))
 
             print(f"  finished T={time:.4f}")

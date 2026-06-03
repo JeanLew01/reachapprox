@@ -16,13 +16,12 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.spatial import cKDTree
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from reachapprox.exp.robotarm.mujoco_n_link_arm import (  # noqa: E402
+from reachapprox.exp.robotarm.fun.mujoco_n_link_arm import (  # noqa: E402
     DEFAULT_GAMMA,
     DEFAULT_KD,
     DEFAULT_KP,
@@ -32,15 +31,15 @@ from reachapprox.exp.robotarm.mujoco_n_link_arm import (  # noqa: E402
     TRACKING_CONTROLLER_NAME,
     MuJoCoNLinkArm,
 )
-from reachapprox.exp.robotarm.robotarm_dim_scaling import (  # noqa: E402
+from reachapprox.exp.robotarm.fun.dim_scaling import (  # noqa: E402
     EXPERIMENT_SEED,
     METRIC_IMPLEMENTATION,
     METRIC_NAME,
     REFERENCE_SEED,
     RHO_Q,
     T_HORIZON,
+    directed_hausdorff_to_convex_hull,
     parse_int_tuple,
-    point_cloud_directed_hausdorff,
     sample_initial_box,
 )
 
@@ -51,7 +50,7 @@ DEFAULT_N_SEEDS = 10
 DEFAULT_N_REF = 20_000
 DEFAULT_COVERAGE_SUBSET = 2_000
 DEFAULT_N_ADV = 1
-DEFAULT_ETA = 0.02
+DEFAULT_ETA = 0.20
 DEFAULT_LAMBDA_REG = 1e-4
 RHO_V = 0.1
 
@@ -206,7 +205,8 @@ def run_experiment(
 
             for budget in budgets:
                 Y_adv = adversarial_endpoint_samples(rng, budget, n, args)
-                error = point_cloud_directed_hausdorff(Y_ref_subset, Y_adv)
+                metric_rng = np.random.default_rng(seed + budget + 9_000_000)
+                error = directed_hausdorff_to_convex_hull(Y_ref_subset, Y_adv, metric_rng)
                 results.append(
                     ExperimentResult(f"adversarial_nadv{args.n_adv}", n, 2 * n, budget, seed + budget, error)
                 )

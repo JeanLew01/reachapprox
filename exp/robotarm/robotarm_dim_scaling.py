@@ -19,43 +19,43 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.spatial import cKDTree
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from reachapprox.exp.robotarm.mujoco_n_link_arm import (
+from reachapprox.exp.robotarm.fun.mujoco_n_link_arm import (
     DEFAULT_GAMMA,
     DEFAULT_KD,
     DEFAULT_KP,
     DEFAULT_LAMBDA,
     DEFAULT_SIGMA,
     DEFAULT_TAU_LIMIT,
-    TRACKING_CONTROLLER_NAME,
-    MuJoCoNLinkArm,
 )
-
-
-DEFAULT_LINK_COUNTS = (2, 3, 4)
-DEFAULT_SAMPLE_BUDGETS = (1, 3, 10, 30, 100, 300, 1000, 3000)
-DEFAULT_N_SEEDS = 20
-DEFAULT_N_REF = 50_000
-DEFAULT_COVERAGE_SUBSET = 2_000
-
-T_HORIZON = 1.0
-RHO_Q = 0.1
-RHO_V = 0.1
-CONTROLLER_MODE = TRACKING_CONTROLLER_NAME
-REFERENCE_SEED = 202606
-EXPERIMENT_SEED = 77531
+from reachapprox.exp.robotarm.fun.dim_scaling import (
+    DEFAULT_COVERAGE_SUBSET,
+    DEFAULT_LINK_COUNTS,
+    DEFAULT_N_REF,
+    DEFAULT_N_SEEDS,
+    DEFAULT_SAMPLE_BUDGETS,
+    EXPERIMENT_SEED,
+    METRIC_IMPLEMENTATION,
+    METRIC_NAME,
+    REFERENCE_SEED,
+    RHO_Q,
+    RHO_V,
+    T_HORIZON,
+    controller_label,
+    directed_hausdorff_to_convex_hull,
+    mean_and_ci,
+    parse_int_tuple,
+    propagate_endpoints,
+    sample_initial_box,
+)
 
 FIG_DIR = Path("CoRL_2026/fig")
 CSV_PATH = FIG_DIR / "robotarm_dim_scaling_results.csv"
 UNIFORM_FIG = FIG_DIR / "robotarm_uniform_dim_scaling_hausdorff_vs_N.png"
-
-METRIC_NAME = "Hausdorff Distance"
-METRIC_IMPLEMENTATION = "point_cloud_directed_hausdorff"
 
 plt.rcParams.update(
     {
@@ -81,10 +81,6 @@ class ExperimentResult:
     error: float
 
 
-def parse_int_tuple(text: str) -> tuple[int, ...]:
-    return tuple(int(part.strip()) for part in text.split(",") if part.strip())
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--n_values", default="2,3,4", help="Comma-separated link counts, e.g. 2,3,4.")
@@ -107,79 +103,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def controller_label(
-    kp: float,
-    kd: float,
-    lambda_gain: float,
-    gamma: float,
-    sigma: float,
-    tau_limit: float,
-) -> str:
-    return (
-        f"{TRACKING_CONTROLLER_NAME}(kp={kp:.6g},kd={kd:.6g},lambda={lambda_gain:.6g},"
-        f"gamma={gamma:.6g},sigma={sigma:.6g},tau_limit={tau_limit:.6g})"
-    )
-
-
-def sample_initial_box(
-    rng: np.random.Generator,
-    N: int,
-    n: int,
-    rho_q: float,
-    rho_v: float,
-) -> np.ndarray:
-    q0 = rng.uniform(-rho_q, rho_q, size=(N, n))
-    v0 = rng.uniform(-rho_v, rho_v, size=(N, n))
-    return np.hstack([q0, v0])
-
-
-def propagate_endpoints(
-    X0: np.ndarray,
-    n: int,
-    T: float,
-    kp: float,
-    kd: float,
-    lambda_gain: float,
-    gamma: float,
-    sigma: float,
-    tau_limit: float,
-) -> np.ndarray:
-    arm = MuJoCoNLinkArm(
-        n=n,
-        T=T,
-        kp=kp,
-        kd=kd,
-        lambda_gain=lambda_gain,
-        gamma=gamma,
-        sigma=sigma,
-        tau_limit=tau_limit,
-    )
-    XT = np.empty_like(X0)
-    for i, x0 in enumerate(X0):
-        XT[i] = arm.rollout(x0, T=T)
-    return XT
-
-
-def point_cloud_directed_hausdorff(ref_points: np.ndarray, sample_points: np.ndarray) -> float:
-    """Compute max_{z in ref_points} min_{y in sample_points} ||z-y||."""
-
-    ref_points = np.asarray(ref_points, dtype=float)
-    sample_points = np.asarray(sample_points, dtype=float)
-    if ref_points.ndim != 2 or sample_points.ndim != 2:
-        raise ValueError("ref_points and sample_points must be two-dimensional.")
-    if ref_points.shape[1] != sample_points.shape[1]:
-        raise ValueError("Point dimensions must match.")
-    tree = cKDTree(sample_points)
-    return float(tree.query(ref_points, k=1, workers=-1)[0].max())
-
-
-def mean_and_ci(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    mean = np.mean(values, axis=1)
-    if values.shape[1] == 1:
-        return mean, mean, mean
-    stderr = np.std(values, axis=1, ddof=1) / np.sqrt(values.shape[1])
-    half_width = 1.96 * stderr
-    return mean, np.maximum(mean - half_width, np.finfo(float).tiny), mean + half_width
 
 
 def run_experiment(
@@ -216,7 +139,8 @@ def run_experiment(
                 Y_ref_subset = Y_ref[subset_idx]
                 X_uniform = sample_initial_box(rng, budget, n, rho_q, rho_v)
                 Y_uniform = propagate_endpoints(X_uniform, n, T, kp, kd, lambda_gain, gamma, sigma, tau_limit)
-                error = point_cloud_directed_hausdorff(Y_ref_subset, Y_uniform)
+                metric_rng = np.random.default_rng(seed + 9_000_000)
+                error = directed_hausdorff_to_convex_hull(Y_ref_subset, Y_uniform, metric_rng)
                 results.append(ExperimentResult("uniform", n, state_dim, budget, seed, error))
 
             print(f"  finished N={budget}")

@@ -20,8 +20,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from reachapprox import utils as ru
-from reachapprox.utils.quaddyn_sampling import ETA, adversarial_gradient
+from reachapprox.exp.quaddynadv import fun as ru
+from reachapprox.exp.quaddynadv.fun.quaddyn_sampling import ETA, adversarial_gradient
 
 
 N_ADV_VALUES = (0, 1, 2, 3, 4)

@@ -8,7 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mujoco_n_link_arm import (
+from fun.mujoco_n_link_arm import (
     DEFAULT_GAMMA,
     DEFAULT_KD,
     DEFAULT_KP,

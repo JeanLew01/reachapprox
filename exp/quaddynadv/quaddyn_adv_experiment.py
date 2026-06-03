@@ -5,8 +5,8 @@ Run from /home/jixia/exp with:
     .venv/bin/python -u reachapprox/exp/quaddynadv/quaddyn_adv_experiment.py
 
 Shared geometry, sampling, flow, support-estimator, and Hausdorff utilities live
-in :mod:`reachapprox.utils`; this file only defines the experiment workflow and
-figures for the quadratic non-Lipschitz dynamics example.
+in :mod:`reachapprox.exp.quaddynadv.fun`; this file only defines the experiment
+workflow and figures for the quadratic non-Lipschitz dynamics example.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial import cKDTree
 
-from reachapprox import utils as ru
+from reachapprox.exp.quaddynadv import fun as ru
 
 
 SAMPLE_BUDGETS = (100, 1000)
