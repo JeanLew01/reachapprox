@@ -108,7 +108,7 @@ terminal cloud to the sampled convex-hull estimator:
 
 $$
     \max_{z \in X_T^{\rm ref}}
-    \operatorname{dist}\left(z,\operatorname{conv}(X_T^N)\right).
+    \mathrm{dist}\left(z,\mathrm{conv}(X_T^N)\right).
 $$
 
 In CSV files, this appears as
