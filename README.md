@@ -1,7 +1,6 @@
 # ReachApprox
 
-This is the repo for the submission named **"On the Limits of
-Sampling-Based Reachability: Geometry, Dynamics, and Sample Complexity"** for
+This is the repo for the submission named **"On the Limits of Sampling-Based Reachability: Geometry, Dynamics, and Sample Complexity"** for
 CoRL 2026.
 
 ## Project Structure
@@ -24,14 +23,14 @@ CoRL 2026.
     │   ├── quaddyn_adv_experiment.py           # convex-hull reachable-set experiments for uniform vs adversarial sampling
     │   ├── quaddyn_christoffel_mixture_experiment.py
     │   │                                       # Christoffel and convex-hull sweeps over adversarial update counts n_adv
-    │   ├── fun/                                # reusable functions for the quadratic-dynamics experiments
+    │   ├── fun/
     │   │   ├── __init__.py
     │   │   ├── quadratic_flow.py               # analytic flow and flow Jacobian for \dot y = 0, \dot x = x^2
     │   │   ├── quaddyn_geometry.py             # equal-area disk / triangle / opened-triangle initial sets
     │   │   ├── quaddyn_sampling.py             # uniform sampling, adversarial updates, and projection routines
     │   │   └── support_estimators.py           # convex hull, Christoffel support, and Hausdorff utilities
-    │   └── results/                            # generated quadratic-dynamics experiment figures
-    └── robotarm/                               # MuJoCo n-link robot-arm uncertainty-propagation benchmark
+    │   └── results/                           
+    └── robotarm/                               # MuJoCo n-link robot-arm uncertainty-propagation
         ├── animate_n_link_arm.py               # optional MuJoCo passive-viewer animation script
         ├── compute_endpoint_coverage.py        # command-line wrapper for convex-hull endpoint coverage computation
         ├── generate_endpoint_samples.py        # terminal endpoint sample generation and diagnostic plots
@@ -39,14 +38,14 @@ CoRL 2026.
         ├── robotarm_dim_scaling.py             # uniform-sampling dimension-scaling experiment
         ├── robotarm_adversarial_dim_scaling.py # adversarial-sampling dimension-scaling experiment
         ├── robotarm_time_sweep.py              # Hausdorff-distance time-sweep experiment
-        ├── simulate_d_link_arm.py              # lightweight viewer/demo wrapper for d-link arms
-        ├── test_n_link_arm.py                  # smoke test for MuJoCo n-link arm rollout and rendering
-        ├── fun/                                # reusable functions for robot-arm experiments
+        ├── simulate_d_link_arm.py              # simulator for n-link 
+        ├── test_n_link_arm.py                  # test
+        ├── fun/                               
         │   ├── __init__.py
         │   ├── mujoco_n_link_arm.py            # MuJoCo XML generation, dynamics, tracking controller, rollout, rendering
         │   ├── dim_scaling.py                  # sampling, rollout, convex-hull Hausdorff metric, shared constants
         │   └── coverage.py                     # directed distance to conv(X_T^N) via coreset + Frank-Wolfe projection
-        └── results/                            # retained robot-arm combined results
+        └── results/                            
             ├── robotarm_dim_scaling_n234_combined.csv
             ├── robotarm_dim_scaling_n234_combined.png
             ├── robotarm_adversarial_dim_scaling_n234_combined.csv
@@ -59,9 +58,9 @@ CoRL 2026.
 
 The quadratic-dynamics experiments use the autonomous non-Lipschitz system
 
-\[
+$$
     \dot x = x^2,\qquad \dot y = 0.
-\]
+$$
 
 The scripts compare uniform sampling, adversarial sampling, convex-hull
 estimators, and Christoffel-type support estimators over several initial-set
@@ -78,18 +77,18 @@ for example:
 
 ### Robot Arm
 
-The robot-arm benchmark uses MuJoCo vertical planar serial \(n\)-link arms with
-\(n \in \{2,3,4\}\). The state is
+The robot-arm benchmark uses MuJoCo vertical planar serial $n$-link arms with
+$n \in \{2,3,4\}$. The state is
 
-\[
+$$
     x = [q^\top, v^\top]^\top \in \mathbb{R}^{2n}.
-\]
+$$
 
 MuJoCo simulates rigid-body dynamics
 
-\[
+$$
     M(q)\dot v + C(q,v)v + g(q) = \tau.
-\]
+$$
 
 The controller is a fixed weak adaptive inverse-dynamics tracking controller for
 a slowly varying reference trajectory. This benchmark is for closed-loop
@@ -97,20 +96,20 @@ uncertainty propagation, not controller design or online safety enforcement.
 
 The initial uncertainty set is the box
 
-\[
+$$
     q_0 \in [-\rho_q,\rho_q]^n,\qquad
     v_0 \in [-\rho_v,\rho_v]^n,
-\]
+$$
 
-with default \(\rho_q=\rho_v=0.1\).
+with default $\rho_q=\rho_v=0.1$.
 
 The current robot-arm Hausdorff metric is the directed distance from a reference
 terminal cloud to the sampled convex-hull estimator:
 
-\[
+$$
     \max_{z \in X_T^{\rm ref}}
     \operatorname{dist}\left(z,\operatorname{conv}(X_T^N)\right).
-\]
+$$
 
 In CSV files, this appears as
 
