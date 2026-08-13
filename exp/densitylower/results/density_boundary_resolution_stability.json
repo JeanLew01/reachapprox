@@ -1,0 +1,27 @@
+{
+  "beta": 4,
+  "N": 100000,
+  "seed": 20340713,
+  "coarse_reference_points": 50081,
+  "fine_reference_points": 107681,
+  "coarse_grid_resolution": 120,
+  "fine_grid_resolution": 180,
+  "tolerance": 0.03,
+  "estimators": {
+    "convex_hull": {
+      "coarse": 0.3555454916434383,
+      "fine": 0.3555454916434383,
+      "absolute_difference": 0.0
+    },
+    "packing": {
+      "coarse": 0.31225605716683486,
+      "fine": 0.31225605716683486,
+      "absolute_difference": 0.0
+    },
+    "christoffel": {
+      "coarse": 0.20125201369806528,
+      "fine": 0.19934479128333502,
+      "absolute_difference": 0.001907222414730264
+    }
+  }
+}

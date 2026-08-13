@@ -30,6 +30,10 @@ CoRL 2026.
     │   │   ├── quaddyn_sampling.py             # uniform sampling, adversarial updates, and projection routines
     │   │   └── support_estimators.py           # convex hull, Christoffel support, and Hausdorff utilities
     │   └── results/                           
+    ├── densitylower/                          # boundary-density ablation on a fixed disk
+    │   ├── density_lower_bound_experiment.py  # convex hull, packing balls, and Christoffel
+    │   ├── paper_text.tex                     # paper/appendix LaTeX replacement text
+    │   └── results/                           # Figure 7, diagnostics, and raw/aggregate CSVs
     └── robotarm/                               # MuJoCo n-link robot-arm uncertainty-propagation
         ├── animate_n_link_arm.py               # optional MuJoCo passive-viewer animation script
         ├── compute_endpoint_coverage.py        # command-line wrapper for convex-hull endpoint coverage computation
@@ -73,6 +77,28 @@ for example:
 .venv/bin/python -u reachapprox/illustration/hausdorff_experiment.py
 .venv/bin/python -u reachapprox/exp/quaddynadv/quaddyn_adv_experiment.py
 .venv/bin/python -u reachapprox/exp/quaddynadv/quaddyn_christoffel_mixture_experiment.py
+```
+
+### Density Lower Bound
+
+The density-lower-bound ablation uses the globally Lipschitz linear system
+
+$$
+    \dot x = 2x,\qquad \dot y = 0,
+$$
+
+at $T=0.5$. The initial support is always the radius-one disk centered at
+$(1,0)$, so the exact terminal support is the ellipse
+$(X-e^{2T})^2/e^{4T}+Y^2\le1$. Only the sampling density changes:
+$p_\beta(x,y)\propto(1-\sqrt{(x-1)^2+y^2})^\beta$ for
+$\beta\in\{0,2,4\}$. All three distributions have the same closed-disk
+support, while the latter two vanish at the boundary. The experiment compares
+convex-hull, packing-ball-union, and Christoffel estimators over 50 common seed
+indices and
+$N\in\{10,30,100,300,1000,3000,10000,30000,100000,300000,1000000\}$.
+
+```bash
+.venv/bin/python -u exp/densitylower/density_lower_bound_experiment.py
 ```
 
 ### Robot Arm

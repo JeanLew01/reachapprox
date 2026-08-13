@@ -1,0 +1,61 @@
+% Figure 1 caption and surrounding discussion for the quadratic-flow experiment.
+% The numerical settings here mirror illustration/hausdorff_experiment.py.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.335\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig/figure1_snapshots.png}
+    \caption{Reachable-set snapshots.}
+    \label{fig:sample_flow_schematic}
+  \end{subfigure}
+  \hspace{-0.6em}
+  \begin{subfigure}[t]{0.335\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig/figure1_error_vs_time.png}
+    \caption{Error versus time.}
+    \label{fig:hausdorff_vs_time}
+  \end{subfigure}
+  \hspace{-0.6em}
+  \begin{subfigure}[t]{0.335\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig/figure1_error_vs_samples.png}
+    \caption{Error versus sample size.}
+    \label{fig:hausdorff_vs_samples}
+  \end{subfigure}
+  \caption{Reachable-set approximation for the autonomous non-Lipschitz
+  dynamics $\dot y=0$, $\dot x=x^2$.  All initial points are sampled
+  uniformly, with the disk shown in red and the star in blue.  Panel (a)
+  shows the initial samples and reference boundaries together with three
+  propagated snapshots before the finite-time blow-up horizon.  Panel (b)
+  shows the mean symmetric Hausdorff distance
+  $d_H(S_T,\widehat S_N)$ versus $T$ at $N=1000$.  Panel (c) shows
+  the same error versus
+  $N\in\{10,30,100,300,1000,3000,10000\}$ at the fixed horizon $T=0.22$ on a
+  logarithmic $N$ axis.  The estimator is the convex hull of the propagated
+  samples, discretized on a $170\times170$ grid; the reference reachable set is
+  represented by $35{,}000$ uniformly sampled points.  Each curve reports the
+  mean over 50 trials and the shaded region is the normal-approximation 95\%
+  confidence interval for that mean (mean $\pm1.96$ standard errors).  The
+  reported symmetric cloud distance is
+  $\max\{\max_{s\in S_T}\min_{\hat s\in\widehat S_N}\|s-\hat s\|_2,
+  \max_{\hat s\in\widehat S_N}\min_{s\in S_T}\|\hat s-s\|_2\}$.}
+  \label{fig:toy_example}
+\end{figure}
+
+Figure~\ref{fig:toy_example} isolates the empirical effect of the
+non-Lipschitz quadratic flow on sampling-based reachable-set approximation.
+As trajectories approach the finite-time blow-up horizon, flow sensitivity and
+the resulting Hausdorff approximation error increase sharply.  No theoretical
+Lipschitz upper or lower bound is asserted for this example.
+
+At the sample-dependence horizon $T=0.22$, the propagated disk remains convex
+and is compatible with the convex-hull estimator, whereas the nonconvex
+polygonal star is not.  In particular, the star has zero reach because of its
+re-entrant corners, and convexification fills its concavities.  Consequently,
+the star curve can retain an irreducible estimator bias as $N$ grows; it should
+not be interpreted as evidence of convergence to zero.  Moreover, sufficiently
+close to blow-up even the propagated disk can become nonconvex, so late-time
+errors can contain convexification bias in addition to sampling error and flow
+sensitivity.  A nonconvex support estimator would be required to isolate
+zero-error sampling convergence for either nonconvex reachable geometry.

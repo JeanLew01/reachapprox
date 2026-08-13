@@ -1,17 +1,23 @@
-"""Reachable-set approximation experiment for dx/dt = x^2, dy/dt = 0.
+"""Figure 1 experiment for dx/dt = x^2, dy/dt = 0.
 
 Run from the repository root with:
 
     python reachapprox/illustration/hausdorff_experiment.py
 
-The script prints the mean approximate Hausdorff distances and saves
-``hausdorff_vs_samples.png`` in the current working directory.
+The script uses uniform samples throughout and saves separate figures for
+reachable-set snapshots, error versus time, and error versus sample size.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import sys
+
+# Permit the documented direct invocation
+# ``python reachapprox/illustration/hausdorff_experiment.py``.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import matplotlib.pyplot as plt
 from matplotlib.path import Path as MplPath
@@ -32,10 +38,10 @@ plt.rcParams.update(
     }
 )
 
-TITLE_SIZE = 24
-LABEL_SIZE = 24
-TICK_SIZE = 15
-LEGEND_SIZE = 17
+TITLE_SIZE = 28
+LABEL_SIZE = 30
+TICK_SIZE = 20
+LEGEND_SIZE = 22
 
 PLOT_FONT = {"fontname": "DejaVu Serif"}
 PLOT_FONT_PROP = {"family": "DejaVu Serif", "size": LEGEND_SIZE}
@@ -45,7 +51,10 @@ OUTER_RADIUS = 1.0
 INNER_RADIUS = OUTER_RADIUS * np.sin(np.pi / 10.0) / np.sin(3.0 * np.pi / 10.0)
 
 TIMES = tuple(float(t) for t in np.linspace(0.01, 0.33, 17))
-SAMPLE_SIZES = (100, 1000)
+TIME_SWEEP_SAMPLE_SIZE = 1_000
+SAMPLE_SIZES = (10, 30, 100, 300, 1_000, 3_000, 10_000)
+SAMPLE_SWEEP_TIME = 0.22
+SNAPSHOT_TIMES = (0.0, 0.11, 0.22, 0.33)
 N_TRIALS = 50
 
 GRID_RESOLUTION = 170
@@ -54,7 +63,9 @@ N_SCHEMATIC_SAMPLES = 500
 RANDOM_SEED = 7
 
 RESULTS_DIR = Path("reachapprox/illustration/results")
-FIGURE_PATH = RESULTS_DIR / "hausdorff_vs_samples.png"
+SNAPSHOT_FIGURE_PATH = RESULTS_DIR / "figure1_snapshots.png"
+TIME_FIGURE_PATH = RESULTS_DIR / "figure1_error_vs_time.png"
+SAMPLE_SIZE_FIGURE_PATH = RESULTS_DIR / "figure1_error_vs_samples.png"
 SAMPLE_FLOW_FIGURE_PATH = RESULTS_DIR / "sample_flow_schematic.png"
 SUPPORT_FIGURE_TEMPLATE = str(RESULTS_DIR / "christoffel_support_N{n_samples}.png")
 
@@ -172,15 +183,20 @@ def run_trial(
     return approximate_hausdorff(true_points_t, estimated_points)
 
 
-def print_table(results: dict[tuple[str, float, int], float]) -> None:
-    header = f"{'set':<8} {'t':>8} {'N':>6} {'mean Hausdorff':>18}"
+def print_table(
+    time_results: dict[tuple[str, float], float],
+    sample_results: dict[tuple[str, int], float],
+) -> None:
+    header = f"{'set':<8} {'T':>8} {'N':>8} {'mean symmetric d_H':>22}"
     print(header)
     print("-" * len(header))
     for set_name in ("disk", "star"):
         for t in TIMES:
-            for n in SAMPLE_SIZES:
-                value = results[(set_name, t, n)]
-                print(f"{set_name:<8} {t:>8.4f} {n:>6d} {value:>18.6f}")
+            value = time_results[(set_name, t)]
+            print(f"{set_name:<8} {t:>8.4f} {TIME_SWEEP_SAMPLE_SIZE:>8d} {value:>22.6f}")
+        for n in SAMPLE_SIZES:
+            value = sample_results[(set_name, n)]
+            print(f"{set_name:<8} {SAMPLE_SWEEP_TIME:>8.4f} {n:>8d} {value:>22.6f}")
 
 
 def confidence_bounds(values: np.ndarray) -> tuple[float, float, float]:
@@ -193,60 +209,180 @@ def confidence_bounds(values: np.ndarray) -> tuple[float, float, float]:
     return mean, lower, upper
 
 
-def plot_results(
-    results: dict[tuple[str, float, int], float],
-    ci_bounds: dict[tuple[str, float, int], tuple[float, float]] | None = None,
-) -> None:
+SET_STYLES = {
+    "disk": {"label": "disk", "color": "#d62728", "marker": "o"},
+    "star": {"label": "star", "color": "#005a9c", "marker": "s"},
+}
+
+
+def plot_snapshot_figure() -> None:
+    """Save the four uniformly sampled reachable-set snapshots."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(6.8, 6.4), constrained_layout=True)
+    fig, axes_array = plt.subplots(
+        2,
+        2,
+        figsize=(8.2, 8.2),
+        gridspec_kw={"hspace": 0.25, "wspace": 0.26},
+    )
+    axes = list(axes_array.ravel())
+    rng = np.random.default_rng(RANDOM_SEED)
+    initial_sets = {
+        "disk": InitialSet("disk", "disk"),
+        "star": InitialSet("star", "star", star_vertices()),
+    }
+    samples = {
+        name: sample_initial_set(rng, initial_set, N_SCHEMATIC_SAMPLES)
+        for name, initial_set in initial_sets.items()
+    }
+    boundaries = {
+        "disk": disk_boundary(),
+        "star": polygon_boundary(star_vertices()),
+    }
 
-    set_colors = {
-        "disk": "#d62728",
-        "star": "#1f77b4",
-    }
-    sample_linestyles = {
-        100: "-",
-        1000: "--",
-    }
-    markers = {
-        100: "s",
-        1000: "D",
-    }
-
-    for n in SAMPLE_SIZES:
-        for set_name, set_label in (
-            ("disk", "S1 disk"),
-            ("star", "S2 star"),
-        ):
-            ys = [results[(set_name, t, n)] for t in TIMES]
-            color = set_colors[set_name]
-            ax.plot(
-                TIMES,
-                ys,
-                color=color,
-                linestyle=sample_linestyles[n],
-                marker=markers[n],
-                linewidth=2.0,
-                markersize=5.0,
-                label=f"{set_label}, N = {n}",
+    for panel_index, (ax, t) in enumerate(zip(axes, SNAPSHOT_TIMES)):
+        plotted = []
+        for set_name in ("disk", "star"):
+            style = SET_STYLES[set_name]
+            points_t = samples[set_name] if t == 0.0 else flow(samples[set_name], t)
+            boundary_t = boundaries[set_name] if t == 0.0 else flow(boundaries[set_name], t)
+            plotted.extend((points_t, boundary_t))
+            ax.scatter(
+                points_t[:, 0],
+                points_t[:, 1],
+                s=9,
+                alpha=0.58,
+                color=style["color"],
+                linewidths=0,
+                label=f"{style['label']} samples",
             )
-            if ci_bounds is not None:
-                lowers = [ci_bounds[(set_name, t, n)][0] for t in TIMES]
-                uppers = [ci_bounds[(set_name, t, n)][1] for t in TIMES]
-                ax.fill_between(TIMES, lowers, uppers, color=color, alpha=0.22)
+            ax.plot(
+                boundary_t[:, 0],
+                boundary_t[:, 1],
+                color=style["color"],
+                linewidth=2.3,
+                label=f"{style['label']} boundary",
+            )
+
+        panel_points = np.vstack(plotted)
+        lower = panel_points.min(axis=0)
+        upper = panel_points.max(axis=0)
+        padding = np.maximum(0.07 * (upper - lower), np.array([0.06, 0.06]))
+        ax.set_xlim(lower[0] - padding[0], upper[0] + padding[0])
+        ax.set_ylim(lower[1] - padding[1], upper[1] + padding[1])
+        ax.set_title("initial" if t == 0.0 else rf"$T={t:.2f}$", fontsize=25, **PLOT_FONT)
+        if panel_index >= 2:
+            ax.set_xlabel("x", fontsize=23, **PLOT_FONT)
+        if panel_index % 2 == 0:
+            ax.set_ylabel("y", fontsize=23, **PLOT_FONT)
+        ax.tick_params(axis="both", labelsize=18)
+        ax.set_box_aspect(1.0)
+        ax.grid(True, alpha=0.22)
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    axes[-1].legend(
+        handles,
+        labels,
+        loc="upper left",
+        bbox_to_anchor=(-1.576, -0.170),
+        ncol=2,
+        frameon=False,
+        fontsize=20,
+        handlelength=2.3,
+        columnspacing=1.0,
+        markerscale=np.sqrt(8.0),
+    )
+    fig.subplots_adjust(left=0.10, right=0.98, top=0.94, bottom=0.22)
+    fig.savefig(SNAPSHOT_FIGURE_PATH, dpi=220)
+    plt.close(fig)
+
+
+def draw_error_panel(
+    ax: plt.Axes,
+    xs: tuple[float, ...] | tuple[int, ...],
+    results: dict[tuple[str, float | int], float],
+    ci_bounds: dict[tuple[str, float | int], tuple[float, float]],
+    title: str,
+    xlabel: str,
+) -> None:
+    """Draw the two geometry curves with mean and 95% mean-CI bands."""
+    for set_name in ("disk", "star"):
+        style = SET_STYLES[set_name]
+        ys = [results[(set_name, x)] for x in xs]
+        lowers = [ci_bounds[(set_name, x)][0] for x in xs]
+        uppers = [ci_bounds[(set_name, x)][1] for x in xs]
+        ax.plot(
+            xs,
+            ys,
+            color=style["color"],
+            linestyle="-",
+            marker=style["marker"],
+            linewidth=2.6,
+            markersize=6.5,
+            label=style["label"],
+        )
+        ax.fill_between(xs, lowers, uppers, color=style["color"], alpha=0.20)
 
     ax.set_yscale("log")
-    ax.set_xticks(TIMES)
-    ax.set_xticklabels([f"{t:.4f}" for t in TIMES], rotation=35, ha="right", fontsize=TICK_SIZE, **PLOT_FONT)
+    ax.set_xlabel(xlabel, fontsize=LABEL_SIZE, **PLOT_FONT)
+    ax.set_ylabel(
+        r"symmetric $d_H(S_T,\widehat S_N)$",
+        fontsize=LABEL_SIZE,
+        labelpad=5,
+        **PLOT_FONT,
+    )
+    ax.set_title(title, fontsize=TITLE_SIZE, **PLOT_FONT)
     ax.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
-    ax.tick_params(axis="both", which="minor", labelsize=TICK_SIZE * 0.8)
-    ax.set_xlabel("time t", fontsize=LABEL_SIZE, **PLOT_FONT)
-    ax.set_ylabel("Hausdorff distance", fontsize=LABEL_SIZE, **PLOT_FONT)
-    ax.set_title("Reachable-set approximation error", fontsize=TITLE_SIZE, **PLOT_FONT)
-    ax.grid(True, which="both", alpha=0.28)
-    ax.legend(frameon=False, prop=PLOT_FONT_PROP)
-    fig.savefig(FIGURE_PATH, dpi=200, bbox_inches="tight", pad_inches=0.15)
-    plt.close(fig)
+    ax.tick_params(axis="both", which="minor", labelsize=16)
+    ax.grid(True, which="both", alpha=0.26)
+    ax.legend(frameon=False, fontsize=LEGEND_SIZE)
+
+
+def plot_error_figures(
+    time_results: dict[tuple[str, float], float],
+    time_ci: dict[tuple[str, float], tuple[float, float]],
+    sample_results: dict[tuple[str, int], float],
+    sample_ci: dict[tuple[str, int], tuple[float, float]],
+) -> None:
+    """Save the time- and sample-dependence panels as separate figures."""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    time_fig, time_ax = plt.subplots(figsize=(8.2, 8.2), layout="constrained")
+    time_fig.set_constrained_layout_pads(w_pad=0.12, h_pad=0.12)
+    draw_error_panel(
+        time_ax,
+        TIMES,
+        time_results,
+        time_ci,
+        rf"Error vs. time ($N={TIME_SWEEP_SAMPLE_SIZE}$)",
+        r"time $T$",
+    )
+    time_ax.set_ylabel("Hausdorff distance", fontsize=LABEL_SIZE, **PLOT_FONT)
+    time_ax.set_xticks(TIMES)
+    time_ax.set_xticklabels([f"{t:.3f}" for t in TIMES], rotation=45, ha="right")
+    time_ax.set_box_aspect(1.0)
+    time_fig.savefig(TIME_FIGURE_PATH, dpi=220)
+    plt.close(time_fig)
+
+    sample_fig, sample_ax = plt.subplots(figsize=(8.2, 8.2), layout="constrained")
+    sample_fig.set_constrained_layout_pads(w_pad=0.12, h_pad=0.12)
+    draw_error_panel(
+        sample_ax,
+        SAMPLE_SIZES,
+        sample_results,
+        sample_ci,
+        rf"Error vs. samples ($T={SAMPLE_SWEEP_TIME:.2f}$)",
+        r"sample size $N$",
+    )
+    sample_ax.set_ylabel("Hausdorff distance", fontsize=LABEL_SIZE, **PLOT_FONT)
+    sample_ax.set_xscale("log")
+    sample_ax.set_xticks(SAMPLE_SIZES)
+    sample_ax.set_xticklabels(
+        [rf"${n // 10 ** int(np.floor(np.log10(n)))}\times10^{{{int(np.floor(np.log10(n)))}}}$" for n in SAMPLE_SIZES],
+        rotation=40,
+        ha="right",
+    )
+    sample_ax.set_box_aspect(1.0)
+    sample_fig.savefig(SAMPLE_SIZE_FIGURE_PATH, dpi=220)
+    plt.close(sample_fig)
 
 
 def plot_sample_flow_schematic() -> None:
@@ -448,36 +584,65 @@ def main() -> None:
         InitialSet("star", "S2 star", star_vertices()),
     )
 
+    experiment_times = tuple(dict.fromkeys((*TIMES, SAMPLE_SWEEP_TIME)))
     true_clouds: dict[tuple[str, float], np.ndarray] = {}
     for initial_set in initial_sets:
         dense_initial = sample_initial_set(rng, initial_set, N_TRUE_POINTS)
-        for t in TIMES:
+        for t in experiment_times:
             true_clouds[(initial_set.name, t)] = flow(dense_initial, t)
 
-    results: dict[tuple[str, float, int], float] = {}
-    ci_bounds: dict[tuple[str, float, int], tuple[float, float]] = {}
+    time_results: dict[tuple[str, float], float] = {}
+    time_ci: dict[tuple[str, float], tuple[float, float]] = {}
+    sample_results: dict[tuple[str, int], float] = {}
+    sample_ci: dict[tuple[str, int], tuple[float, float]] = {}
     for initial_set in initial_sets:
         for t in TIMES:
             true_points_t = true_clouds[(initial_set.name, t)]
-            for n in SAMPLE_SIZES:
-                distances = np.empty(N_TRIALS, dtype=float)
-                for trial, seed in enumerate(trial_seeds):
-                    trial_rng = np.random.default_rng(int(seed))
-                    distances[trial] = run_trial(trial_rng, initial_set, t, n, true_points_t)
-                mean, lower, upper = confidence_bounds(distances)
-                results[(initial_set.name, t, n)] = mean
-                ci_bounds[(initial_set.name, t, n)] = (lower, upper)
-                print(
-                    f"finished {initial_set.label}, t={t:.4f}, N={n}: "
-                    f"mean d_H={mean:.6f}, 95% CI=({lower:.6f}, {upper:.6f})"
+            distances = np.empty(N_TRIALS, dtype=float)
+            for trial, seed in enumerate(trial_seeds):
+                trial_rng = np.random.default_rng(int(seed))
+                distances[trial] = run_trial(
+                    trial_rng,
+                    initial_set,
+                    t,
+                    TIME_SWEEP_SAMPLE_SIZE,
+                    true_points_t,
                 )
+            mean, lower, upper = confidence_bounds(distances)
+            time_results[(initial_set.name, t)] = mean
+            time_ci[(initial_set.name, t)] = (lower, upper)
+            print(
+                f"finished {initial_set.label}, T={t:.4f}, N={TIME_SWEEP_SAMPLE_SIZE}: "
+                f"mean symmetric d_H={mean:.6f}, 95% CI=({lower:.6f}, {upper:.6f})"
+            )
+
+        true_points_t = true_clouds[(initial_set.name, SAMPLE_SWEEP_TIME)]
+        for n in SAMPLE_SIZES:
+            distances = np.empty(N_TRIALS, dtype=float)
+            for trial, seed in enumerate(trial_seeds):
+                trial_rng = np.random.default_rng(int(seed))
+                distances[trial] = run_trial(
+                    trial_rng,
+                    initial_set,
+                    SAMPLE_SWEEP_TIME,
+                    n,
+                    true_points_t,
+                )
+            mean, lower, upper = confidence_bounds(distances)
+            sample_results[(initial_set.name, n)] = mean
+            sample_ci[(initial_set.name, n)] = (lower, upper)
+            print(
+                f"finished {initial_set.label}, T={SAMPLE_SWEEP_TIME:.4f}, N={n}: "
+                f"mean symmetric d_H={mean:.6f}, 95% CI=({lower:.6f}, {upper:.6f})"
+            )
 
     print()
-    print_table(results)
-    plot_results(results, ci_bounds)
-    plot_sample_flow_schematic()
-    print(f"\nsaved figure to {FIGURE_PATH}")
-    print(f"saved sample flow schematic to {SAMPLE_FLOW_FIGURE_PATH}")
+    print_table(time_results, sample_results)
+    plot_snapshot_figure()
+    plot_error_figures(time_results, time_ci, sample_results, sample_ci)
+    print(f"\nsaved snapshot figure to {SNAPSHOT_FIGURE_PATH}")
+    print(f"saved time-dependence figure to {TIME_FIGURE_PATH}")
+    print(f"saved sample-dependence figure to {SAMPLE_SIZE_FIGURE_PATH}")
 
 
 if __name__ == "__main__":
