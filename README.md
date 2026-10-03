@@ -10,12 +10,10 @@
 [<img src="https://img.shields.io/badge/Simulator-MuJoCo%203.8-orange.svg"/>](https://mujoco.org/)
 [<img src="https://img.shields.io/badge/CoRL-2026-red.svg"/>](https://www.corl.org/)
 
-![Lipschitz bound validation](results/lipschitz_bound_validation/lipschitz_bound_validation.png)
-
 </div>
 
-This repository contains the code for every experiment in the paper.  Each figure and table
-has one script, and the raw per-trial results behind it ship in `results/`.
+This repository contains the code for every experiment in the paper.  Each experiment has one script,
+and the raw per-trial results behind it ship in `results/`.
 
 Sampling-based reachability propagates finitely many initial states through the dynamics and builds a set
 estimate $\widehat S_N$ from the endpoints.  Existing finite-sample guarantees bound the *probability mass*
@@ -25,7 +23,7 @@ geometric question instead: **how many endpoint samples are needed so that $d_H(
 where $S_T = \mathcal R_T(S_0)$ is the reachable set of $\dot x = F(x)$ from the initial set $S_0$?
 
 
-## Main results
+## Theoretical results
 
 Three regularity conditions make a probability-mass guarantee upgradable to Hausdorff accuracy:
 
@@ -42,72 +40,76 @@ Let $R$ be the volume-equivalent radius of $S_0$ and $n$ the state dimension.  U
 
 The two bounds match up to logarithmic factors, so the burden $\tilde\Theta\big((e^{LT}R/r)^n\big)$ is
 intrinsic: it is exponential in the dimension and degrades exponentially with the horizon.  This is a
-property of the problem, not of any particular estimator.  The experiments show that adversarial sampling
-improves the constants but not the scaling.
+property of the problem, not of any particular estimator.
 
 
-## Results
+## Geometry and dynamics both matter
 
-### Geometry and dynamics both matter (Figures 1 and 2)
+On the globally Lipschitz system $\dot x = x,\ \dot y = 0$, three initial sets of equal area $\pi$,
+centered at $(2, 0)$, are sampled uniformly, propagated by $\varphi_T(x, y) = (e^T x, y)$, and estimated
+by the convex hull of the endpoints:
 
-**Figure 1.** On the non-Lipschitz system $\dot x = x^2,\ \dot y = 0$, the error for the star (inward
-cusps) saturates as $N$ grows.  At fixed $N$, the error blows up as the flow stretches neighborhoods.
+* **circle**, $r_0 = 1$;
+* **opened triangle**, $r_0 \approx 0.309$;
+* **triangle**, $r_0 = 0$, which violates the positive-reach assumption.
 
-Initial sets and flow | Error vs. sample size | Error vs. horizon
-:-------------------------:|:-------------------------:|:-------------------------:
-![snapshots](results/quadratic_flow_illustration/snapshots.png) | ![error vs samples](results/quadratic_flow_illustration/error_vs_samples.png) | ![error vs time](results/quadratic_flow_illustration/error_vs_time.png)
+The error is the symmetric Hausdorff distance to the true reachable set, averaged over 50 trials (shading:
+95% confidence intervals).  The black dash-dotted and dashed curves are the upper bound (Theorem 1) and
+the minimax lower bound (Theorem 2), with $\delta = 0.05$ and $r_0 = 0.309$.
 
-**Figure 2** (top of the page) uses the Lipschitz system $\dot x = x,\ \dot y = 0$.  The circle
-($r_0 = 1$) and the opened triangle ($r_0 \approx 0.309$) satisfy the positive-reach assumption; the
-triangle ($r_0 = 0$) does not and has the largest error.  Over time the empirical curves run parallel to
-the minimax lower-bound scale, and they sit between the two theoretical curves.
+![Lipschitz bound validation](results/lipschitz_bound_validation/lipschitz_bound_validation.png)
 
-### The density lower bound is needed (Figure 6)
+* **Geometry.** The triangle, which lacks positive reach, has the largest error.  The circle has the
+  smallest.
+* **Dynamics.** The error grows with the horizon as the flow expands the $x$-direction.  Over time the
+  empirical curves run parallel to the lower-bound scale.
+* **Sample size.** The decay in $N$ lies between the upper and the minimax lower bound.
 
-**Figure 6.** The same disk support, dynamics and horizon are sampled with densities
-$p_\beta \propto (1-r)^\beta$, which vanish at the boundary for $\beta > 0$.  Full support alone does not
-give a uniform rate.  At $N = 10^6$ the Christoffel error is 0.0068, 0.0605 and 0.1800 for
-$\beta = 0, 2, 4$.
 
-![density lower bound](results/density_lower_bound/density_lower_bound.png)
+## Experiments
 
-### The curse of dimensionality survives adversarial sampling (Figures 3 and 7, Tables 2–4)
+Each experiment is one script in `experiments/`.  Its per-trial results are saved in
+`results/<experiment>/`.
 
-**Figure 3.** Closed-loop MuJoCo $n$-link arms with state dimension $2n \in \{4, 6, 8\}$, propagated to $T = 1$.
-
-Uniform sampling | Adversarial sampling | Slope fit (Figure 7)
-:-------------------------:|:-------------------------:|:-------------------------:
-![uniform sampling](results/robotarm_dimension_scaling/uniform_sampling.png) | ![adversarial sampling](results/robotarm_dimension_scaling/adversarial_sampling.png) | ![slope fit](results/robotarm_slope_fit/slope_fit.png)
-
-**Table 2.** Log–log slopes of the mean Hausdorff error against $N$:
-
-| State dimension | 4 | 6 | 8 |
-|---|---|---|---|
-| Uniform sampling | −0.2806 | −0.2094 | −0.1662 |
-| Adversarial sampling | −0.3535 | −0.2701 | −0.2224 |
-
-* **Adversarial vs. uniform.** Adversarial sampling has the steeper slope in every dimension, and it
-  improves the mean error at $N = 3000$ by 39%, 36% and 31% (Table 4).  These adversarial numbers come
-  from the shipped paper data; a fresh rerun does not reproduce them (see [Notes](#notes)).
-* **Dimension.** Both methods flatten as the dimension grows.
-* **Fit (Table 3).** The fit $|{\rm slope}(d)| \approx 1/(a d^b + c)$ gives the following inverse-rate
-  exponents $a d^b + c$:
-  * uniform: $0.5049\,d^{1.0709} + 1.3353$;
-  * adversarial: $0.9488\,d^{0.7203} + 0.2535$.
-
-  Both exponents grow with the dimension.
-
-### Supplementary experiments (Figures 8–10)
-
-Robot-arm error vs. horizon (Figure 8) | Adversarial intensity, convex hull, $N = 1000$ (Figure 9)
-:-------------------------:|:-------------------------:
-![time sweep](results/robotarm_time_sweep/robotarm_time_sweep.png) | ![adversarial intensity](results/adversarial_intensity/convex_hull_N1000.png)
-
-* **Figure 8.** Under the tracking controller the error grows only slowly with $T$.  The worst-case
-  $e^{nLT}$ is a minimax rate, not an instance rate.
-* **Figures 9 and 10.** These sweep the number of adversarial updates $n_{\rm adv}$ for the convex-hull
-  and Christoffel estimators.  Adversarial updates help only once the budget is large enough to keep
-  global coverage.
+* **Quadratic flow illustration** (`quadratic_flow_illustration`)
+  * *System:* the non-globally-Lipschitz flow $\dot x = x^2,\ \dot y = 0$,
+    $\varphi_T(x, y) = (x/(1 - Tx), y)$.
+  * *Initial sets:* a unit disk and a five-pointed star of the same circumradius, centered at $(2, 0)$,
+    sampled uniformly.
+  * *Estimator and error:* the convex hull on a $170 \times 170$ grid, and the symmetric Hausdorff
+    distance to 35,000 propagated points; 50 trials.
+  * *Sweeps:* $N \in \{10, \dots, 10^4\}$ at $T = 0.22$, and $T \in [0.01, 0.33]$ at $N = 1000$.
+* **Lipschitz bound validation** (`lipschitz_bound_validation`)
+  * *Setting:* the experiment shown above.
+  * *Sweeps:* $N \in \{3\times10^2, \dots, 3\times10^5\}$ at $T = 1$, and $T \in [0.01, 2]$ at $N = 1000$.
+* **Density lower bound** (`density_lower_bound`)
+  * *System:* the unit disk centered at $(1, 0)$, $\dot x = 2x,\ \dot y = 0$, $T = 0.5$.
+  * *Sampling:* densities $p_\beta \propto (1 - r)^\beta$ with $\beta \in \{0, 2, 4\}$.  They share the same
+    support and vanish at the boundary for $\beta > 0$.
+  * *Estimators:* convex hull, union of balls of radius $h = 0.05$, and Christoffel sublevel set
+    (degree 6).
+  * *Trials:* $N \in \{10, \dots, 10^6\}$, 50 seeds, 5–95% bands.
+* **Robot-arm dimension scaling** (`robotarm_dimension_scaling`, with `robotarm_slope_fit`)
+  * *System:* vertical planar $n$-link arms in MuJoCo, $n \in \{2, 3, 4\}$, state $x = [q, v] \in \mathbb R^{2n}$.
+    Links have length 0.5, capsule radius 0.035, density 1000, damping 0.2 and armature 0.01; the time
+    step is $2\times10^{-3}$ s.
+  * *Controller:* a non-adaptive inverse-dynamics tracking controller,
+    $\tau = M(q)\ddot q_d + C(q,v)v + g(q) - K_p e - K_d\dot e$, with $K_p = 0.01$, $K_d = 0.005$ and
+    $|\tau| \le 100$.  The reference is $q_{d,i}(t) = q_{c,i} + 0.08\sin(0.5t + \phi_i)$.
+  * *Initial set and horizon:* $[-0.1, 0.1]^{2n}$, propagated to $T = 1$.
+  * *Sampling:* uniform, or Algorithm 1 with $n_{\rm adv} = 1$ and $\eta = 0.2$.
+  * *Error:* directed Hausdorff distance from 2,000 of 20,000 reference endpoints to the samples;
+    $N \in \{1, \dots, 3000\}$, 10 seeds.
+  * *Slope fit:* `robotarm_slope_fit` fits the log–log slopes with $|{\rm slope}(d)| \approx 1/(a d^b + c)$.
+* **Robot-arm time sweep** (`robotarm_time_sweep`)
+  * *Setting:* the same arms with uniform sampling and $N = 1000$.
+  * *Sweep:* $T \in [0.01, 2]$ (11 values), with a 5,000-point reference cloud and 5 seeds.
+* **Adversarial sampling intensity** (`adversarial_intensity`)
+  * *System:* $\dot x = x^2,\ \dot y = 0$ with the circle, opened triangle and triangle.
+  * *Sampling:* $N \in \{10, 100, 1000\}$ endpoints from Algorithm 1 with $n_{\rm adv} \in \{0, \dots, 4\}$
+    ($n_{\rm adv} = 0$ is uniform sampling).
+  * *Estimators and error:* convex hull and Christoffel sublevel set; Hausdorff distance to a
+    12,000-point reference over $T \in [0.01, 0.29]$; 50 trials.
 
 
 ## Installation
@@ -117,30 +119,27 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-MuJoCo is needed only to *run* the robot-arm experiments (Figures 3 and 8).  Re-plotting from the shipped
+MuJoCo is needed only to *run* the robot-arm experiments.  Re-plotting from the shipped
 CSVs and all planar experiments need only NumPy, SciPy, Matplotlib and Shapely.
 
 
-## Reproduce the paper
+## Reproduce
 
 Run every command from the repository root.  Each script writes per-trial results to `results/<experiment>/trials.csv`
 and then plots from them.  `--plot-only` skips the experiment and regenerates the figures and tables from
 the shipped CSVs, in seconds.
 
-| Paper item | Command | Run time* |
-|---|---|---|
-| Figure 1 | `python -m experiments.quadratic_flow_illustration` | ~10 min |
-| Figure 2 | `python -m experiments.lipschitz_bound_validation` | ~6 min |
-| Figure 3, Table 2, Table 4 | `python -m experiments.robotarm_dimension_scaling` | ~70 min |
-| Figure 6 | `python -m experiments.density_lower_bound` | ~50 min |
-| Figure 7, Table 3 | `python -m experiments.robotarm_slope_fit` (reads `results/robotarm_dimension_scaling/loglog_slopes.csv`) | seconds |
-| Figure 8 | `python -m experiments.robotarm_time_sweep` | ~30 min (estimate) |
-| Figures 9 and 10 | `python -m experiments.adversarial_intensity` | ~12 min |
+```shell
+python -m experiments.quadratic_flow_illustration
+python -m experiments.lipschitz_bound_validation
+python -m experiments.density_lower_bound
+python -m experiments.adversarial_intensity
+python -m experiments.robotarm_dimension_scaling   # MuJoCo
+python -m experiments.robotarm_slope_fit           # uses the output of robotarm_dimension_scaling
+python -m experiments.robotarm_time_sweep          # MuJoCo
+```
 
-\*On a 16-thread AMD Ryzen 7 7735HS.  The robot-arm scripts spread MuJoCo rollouts over all CPU cores;
-the other scripts are single-threaded.
-
-Regenerate every figure and table from the shipped results:
+Regenerate all figures and tables from the shipped results:
 
 ```shell
 for s in quadratic_flow_illustration lipschitz_bound_validation robotarm_dimension_scaling \
@@ -165,66 +164,31 @@ python -m experiments.robotarm_dimension_scaling --metric convex_hull
 python -m pytest
 ```
 
-Figures 4 and 5 are schematic drawings, and Table 1 restates Theorems 1 and 2, so none of them has a script.
-
-
 ## Code structure
 
 ```text
-reachapprox/                     # shared library
-├─ flows.py                      # analytic flows: x' = x^2 (+ Jacobian), x' = a x
-├─ geometry.py                   # disk, star, (opened) triangle; uniform sampling, boundary points, projection
-├─ estimators.py                 # convex hull, Christoffel sublevel set, evaluation grids
-├─ metrics.py                    # Hausdorff distances between clouds, boundaries and estimates
-├─ adversarial.py                # Algorithm 1 for the planar quadratic system
-├─ utils.py                      # seeding, 95% CIs, CSV I/O, plotting helpers
+reachapprox/                        # shared library
+├─ flows.py                         # analytic flows: x' = x^2 (+ Jacobian), x' = a x
+├─ geometry.py                      # disk, star, (opened) triangle; uniform sampling, boundary points, projection
+├─ estimators.py                    # convex hull, Christoffel sublevel set, evaluation grids
+├─ metrics.py                       # Hausdorff distances between clouds, boundaries and estimates
+├─ adversarial.py                   # Algorithm 1 for the planar quadratic system
+├─ utils.py                         # seeding, 95% CIs, CSV I/O, plotting helpers
 └─ robotarm/
-   ├─ arm.py                     # MuJoCo n-link arm, inverse-dynamics tracking controller, parallel rollouts
-   ├─ sampling.py                # uniform box sampling and Algorithm 1 on the box
-   └─ metrics.py                 # directed Hausdorff to the sample cloud / to its convex hull
-experiments/                     # one script per experiment; python -m experiments.<name>
-├─ quadratic_flow_illustration.py   # Figure 1: x' = x^2, disk vs. star
-├─ lipschitz_bound_validation.py    # Figure 2: x' = x, empirical error vs. Theorems 1-2
-├─ robotarm_dimension_scaling.py    # Figure 3, Tables 2 and 4: robot arm, uniform vs. adversarial
-├─ density_lower_bound.py           # Figure 6: vanishing boundary density
-├─ robotarm_slope_fit.py            # Figure 7, Table 3: slope vs. state dimension
-├─ robotarm_time_sweep.py           # Figure 8: robot arm, error vs. horizon
-└─ adversarial_intensity.py         # Figures 9 and 10: number of adversarial updates
+   ├─ arm.py                        # MuJoCo n-link arm, inverse-dynamics tracking controller, parallel rollouts
+   ├─ sampling.py                   # uniform box sampling and Algorithm 1 on the box
+   └─ metrics.py                    # directed Hausdorff to the sample cloud / to its convex hull
+experiments/                        # one script per experiment; python -m experiments.<name>
+├─ quadratic_flow_illustration.py   # x' = x^2, disk vs. star
+├─ lipschitz_bound_validation.py    # x' = x, empirical error vs. Theorems 1-2
+├─ robotarm_dimension_scaling.py    # robot arm, uniform vs. adversarial
+├─ density_lower_bound.py           # vanishing boundary density
+├─ robotarm_slope_fit.py            # slope vs. state dimension
+├─ robotarm_time_sweep.py           # robot arm, error vs. horizon
+└─ adversarial_intensity.py         # number of adversarial updates
 results/<experiment>/               # per-trial CSVs, tables, and figures, one folder per script
-tests/                           # flows, geometry, estimators, samplers, metrics
+tests/                              # flows, geometry, estimators, samplers, metrics
 ```
-
-
-## Notes
-
-* **Robot-arm error metric.**
-  * *What the paper reports.* Figure 3, Tables 2–4 and Figure 8 use the directed Hausdorff distance from
-    a reference endpoint cloud to the *sample cloud*, $\max_{z\in Y_{\rm ref}}\min_i\|z - Y_i\|$.  This is
-    the inner error that Theorem 1 controls, and it upper-bounds the inner error of any estimator that
-    contains the samples.
-  * *Option.* `--metric convex_hull` measures the distance to the convex hull of the samples instead.
-* **Robot-arm initial set.**
-  * *Paper text.* Appendix C.1 writes $S_0$ as the box opened by a ball of radius 0.01.
-  * *Code.* The experiments sample the plain box $[-0.1, 0.1]^{2n}$.  The opening only rounds the
-    corners and removes a negligible fraction of the volume.
-* **Adversarial robot-arm data.**
-  * *Shipped data.* `results/robotarm_dimension_scaling/trials.csv` holds the per-seed errors behind the paper.  The
-    uniform rows are reproduced exactly by the script.
-  * *Lost version.* The adversarial rows came from an earlier, unrecorded variant of the sampler.
-  * *Current sampler.* The script implements Algorithm 1 with $n_{\rm adv} = 1$ and $\eta = 0.2$.  The
-    MuJoCo flow is not differentiated, so the flow Jacobian is replaced by the identity.
-  * *Rerun result.* A full rerun with this sampler and the point-cloud metric gives **no improvement over
-    uniform sampling**.  The adversarial slopes are −0.280, −0.212 and −0.176, against −0.281, −0.209 and
-    −0.166 for uniform.  So the adversarial rows of Table 2, Table 4 and Figure 3 (right) cannot currently
-    be regenerated from code.
-  * *Figures 9 and 10.* The planar adversarial sampler behind these figures is fully reproducible.
-* **Controller.** The paper's tracking controller is
-  $\tau = M(q)\ddot q_d + C(q,v)v + g(q) - K_p e - K_d\dot e$ with $K_p = 0.01$, $K_d = 0.005$, clipped to
-  $\pm100$.  The feed-forward term is computed with MuJoCo's inverse dynamics, which also compensates the
-  joint damping.
-* **Determinism.** Every trial has its own seed.  The planar scripts reproduce the shipped CSVs bit for
-  bit.  The uniform robot-arm runs (Figure 3) and the time sweep (Figure 8) agree with the paper data to
-  the 12 significant digits stored in the CSVs.
 
 
 ## Citation
