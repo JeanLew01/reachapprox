@@ -7,9 +7,9 @@ uniform sampling).  The reachable set is estimated by the convex hull
 (Figure 9) or the Christoffel sublevel set (Figure 10), and the Hausdorff
 error to a 12,000-point reference cloud is averaged over 50 trials.
 
-    python -m experiments.fig9_10_adversarial_intensity
-    python -m experiments.fig9_10_adversarial_intensity --estimators christoffel
-    python -m experiments.fig9_10_adversarial_intensity --plot-only
+    python -m experiments.adversarial_intensity
+    python -m experiments.adversarial_intensity --estimators christoffel
+    python -m experiments.adversarial_intensity --plot-only
 """
 
 from __future__ import annotations
@@ -48,13 +48,12 @@ ESTIMATORS = {
     "christoffel": {"title": "Christoffel", "reference_seed": 210_000, "trial_seed": 230_000, "tag": "christoffel"},
 }
 
-OUT_DIR = RESULTS_DIR / "fig9_10"
-TRIALS_CSV = OUT_DIR / "fig9_10_trials.csv"
+OUT_DIR = RESULTS_DIR / "adversarial_intensity"
+TRIALS_CSV = OUT_DIR / "trials.csv"
 
 
 def figure_path(estimator: str, budget: int):
-    figure = "fig9" if estimator == "convex_hull" else "fig10"
-    return OUT_DIR / f"{figure}_{estimator}_N{budget}.png"
+    return OUT_DIR / f"{estimator}_N{budget}.png"
 
 
 def run_condition(task: tuple[str, int, str, float]) -> list[dict]:

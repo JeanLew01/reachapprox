@@ -8,8 +8,8 @@ averaged over 50 trials.  The theoretical curves are the upper bound of
 Theorem 1 and the lower bound of Theorem 2 solved for r (n=2, L=1, R=1,
 rho=1, delta=0.05, r0=min(r0_circle, r0_opened)).
 
-    python -m experiments.fig2_lipschitz_validation              # run + plot
-    python -m experiments.fig2_lipschitz_validation --plot-only  # plot from CSV
+    python -m experiments.lipschitz_bound_validation              # run + plot
+    python -m experiments.lipschitz_bound_validation --plot-only  # plot from CSV
 """
 
 from __future__ import annotations
@@ -64,9 +64,9 @@ SNAPSHOT_SAMPLES = 300
 SNAPSHOT_LANES = {"disk": 10.0 / 3.0, "opened": 0.0, "triangle": -10.0 / 3.0}
 SNAPSHOT_LABEL_Y = {"disk": 1.95, "opened": -1.30, "triangle": -4.60}
 
-OUT_DIR = RESULTS_DIR / "fig2"
-TRIALS_CSV = OUT_DIR / "fig2_trials.csv"
-FIGURE_PATH = OUT_DIR / "fig2_lipschitz_validation.png"
+OUT_DIR = RESULTS_DIR / "lipschitz_bound_validation"
+TRIALS_CSV = OUT_DIR / "trials.csv"
+FIGURE_PATH = OUT_DIR / "lipschitz_bound_validation.png"
 
 COLORS = {"disk": "#d62728", "opened": "#0072b2", "triangle": "#e69f00"}
 MARKERS = {"disk": ("o", COLORS["disk"]), "opened": ("^", "white"), "triangle": ("^", COLORS["triangle"])}

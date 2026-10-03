@@ -3,10 +3,10 @@
 The magnitude of the Table 2 slopes is fitted as m(d) = 1 / (a d^b + c) over
 state dimensions d = 4, 6, 8, separately for uniform and adversarial sampling.
 As in the paper, the slopes are rounded to four decimals (as reported in
-Table 2) before fitting.  Requires results/fig3/table2_slopes.csv, produced by
-`python -m experiments.fig3_robotarm_dim_scaling [--plot-only]`.
+Table 2) before fitting.  Requires results/robotarm_dimension_scaling/loglog_slopes.csv, produced by
+`python -m experiments.robotarm_dimension_scaling [--plot-only]`.
 
-    python -m experiments.fig7_slope_fit
+    python -m experiments.robotarm_slope_fit
 """
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ from scipy.optimize import OptimizeWarning, curve_fit
 from reachapprox.utils import RESULTS_DIR, read_csv, write_csv
 
 
-SLOPES_CSV = RESULTS_DIR / "fig3" / "table2_slopes.csv"
-OUT_DIR = RESULTS_DIR / "fig7"
-PARAMS_CSV = OUT_DIR / "table3_fit_parameters.csv"
-FIGURE_PATH = OUT_DIR / "fig7_slope_fit.png"
+SLOPES_CSV = RESULTS_DIR / "robotarm_dimension_scaling" / "loglog_slopes.csv"
+OUT_DIR = RESULTS_DIR / "robotarm_slope_fit"
+PARAMS_CSV = OUT_DIR / "fit_parameters.csv"
+FIGURE_PATH = OUT_DIR / "slope_fit.png"
 INITIAL_GUESS = {"uniform": (0.5, 1.0, 1.0), "adversarial": (0.8, 1.0, 0.5)}
 STYLE = {"uniform": ("o", "Uniform"), "adversarial": ("s", "Adversarial")}
 

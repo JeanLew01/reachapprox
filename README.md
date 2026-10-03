@@ -10,7 +10,7 @@
 [<img src="https://img.shields.io/badge/Simulator-MuJoCo%203.8-orange.svg"/>](https://mujoco.org/)
 [<img src="https://img.shields.io/badge/CoRL-2026-red.svg"/>](https://www.corl.org/)
 
-![figure 2](results/fig2/fig2_lipschitz_validation.png)
+![Lipschitz bound validation](results/lipschitz_bound_validation/lipschitz_bound_validation.png)
 
 </div>
 
@@ -55,7 +55,7 @@ cusps) saturates as $N$ grows.  At fixed $N$, the error blows up as the flow str
 
 Initial sets and flow | Error vs. sample size | Error vs. horizon
 :-------------------------:|:-------------------------:|:-------------------------:
-![fig1a](results/fig1/fig1_snapshots.png) | ![fig1b](results/fig1/fig1_error_vs_samples.png) | ![fig1c](results/fig1/fig1_error_vs_time.png)
+![snapshots](results/quadratic_flow_illustration/snapshots.png) | ![error vs samples](results/quadratic_flow_illustration/error_vs_samples.png) | ![error vs time](results/quadratic_flow_illustration/error_vs_time.png)
 
 **Figure 2** (top of the page) uses the Lipschitz system $\dot x = x,\ \dot y = 0$.  The circle
 ($r_0 = 1$) and the opened triangle ($r_0 \approx 0.309$) satisfy the positive-reach assumption; the
@@ -69,7 +69,7 @@ $p_\beta \propto (1-r)^\beta$, which vanish at the boundary for $\beta > 0$.  Fu
 give a uniform rate.  At $N = 10^6$ the Christoffel error is 0.0068, 0.0605 and 0.1800 for
 $\beta = 0, 2, 4$.
 
-![fig6](results/fig6/fig6_density_lower_bound.png)
+![density lower bound](results/density_lower_bound/density_lower_bound.png)
 
 ### The curse of dimensionality survives adversarial sampling (Figures 3 and 7, Tables 2–4)
 
@@ -77,7 +77,7 @@ $\beta = 0, 2, 4$.
 
 Uniform sampling | Adversarial sampling | Slope fit (Figure 7)
 :-------------------------:|:-------------------------:|:-------------------------:
-![fig3a](results/fig3/fig3_uniform.png) | ![fig3b](results/fig3/fig3_adversarial.png) | ![fig7](results/fig7/fig7_slope_fit.png)
+![uniform sampling](results/robotarm_dimension_scaling/uniform_sampling.png) | ![adversarial sampling](results/robotarm_dimension_scaling/adversarial_sampling.png) | ![slope fit](results/robotarm_slope_fit/slope_fit.png)
 
 **Table 2.** Log–log slopes of the mean Hausdorff error against $N$:
 
@@ -87,7 +87,8 @@ Uniform sampling | Adversarial sampling | Slope fit (Figure 7)
 | Adversarial sampling | −0.3535 | −0.2701 | −0.2224 |
 
 * **Adversarial vs. uniform.** Adversarial sampling has the steeper slope in every dimension, and it
-  improves the mean error at $N = 3000$ by 39%, 36% and 31% (Table 4).
+  improves the mean error at $N = 3000$ by 39%, 36% and 31% (Table 4).  These adversarial numbers come
+  from the shipped paper data; a fresh rerun does not reproduce them (see [Notes](#notes)).
 * **Dimension.** Both methods flatten as the dimension grows.
 * **Fit (Table 3).** The fit $|{\rm slope}(d)| \approx 1/(a d^b + c)$ gives the following inverse-rate
   exponents $a d^b + c$:
@@ -100,7 +101,7 @@ Uniform sampling | Adversarial sampling | Slope fit (Figure 7)
 
 Robot-arm error vs. horizon (Figure 8) | Adversarial intensity, convex hull, $N = 1000$ (Figure 9)
 :-------------------------:|:-------------------------:
-![fig8](results/fig8/fig8_robotarm_time_sweep.png) | ![fig9](results/fig9_10/fig9_convex_hull_N1000.png)
+![time sweep](results/robotarm_time_sweep/robotarm_time_sweep.png) | ![adversarial intensity](results/adversarial_intensity/convex_hull_N1000.png)
 
 * **Figure 8.** Under the tracking controller the error grows only slowly with $T$.  The worst-case
   $e^{nLT}$ is a minimax rate, not an instance rate.
@@ -122,19 +123,19 @@ CSVs and all planar experiments need only NumPy, SciPy, Matplotlib and Shapely.
 
 ## Reproduce the paper
 
-Run every command from the repository root.  Each script writes per-trial results to `results/<figure>/*.csv`
+Run every command from the repository root.  Each script writes per-trial results to `results/<experiment>/trials.csv`
 and then plots from them.  `--plot-only` skips the experiment and regenerates the figures and tables from
 the shipped CSVs, in seconds.
 
 | Paper item | Command | Run time* |
 |---|---|---|
-| Figure 1 | `python -m experiments.fig1_quadratic_illustration` | ~10 min |
-| Figure 2 | `python -m experiments.fig2_lipschitz_validation` | FIG2_TIME |
-| Figure 3, Table 2, Table 4 | `python -m experiments.fig3_robotarm_dim_scaling` | FIG3_TIME |
-| Figure 6 | `python -m experiments.fig6_density_lower_bound` | FIG6_TIME |
-| Figure 7, Table 3 | `python -m experiments.fig7_slope_fit` (reads `results/fig3/table2_slopes.csv`) | seconds |
-| Figure 8 | `python -m experiments.fig8_robotarm_time_sweep` | FIG8_TIME |
-| Figures 9 and 10 | `python -m experiments.fig9_10_adversarial_intensity` | FIG910_TIME |
+| Figure 1 | `python -m experiments.quadratic_flow_illustration` | ~10 min |
+| Figure 2 | `python -m experiments.lipschitz_bound_validation` | ~6 min |
+| Figure 3, Table 2, Table 4 | `python -m experiments.robotarm_dimension_scaling` | ~70 min |
+| Figure 6 | `python -m experiments.density_lower_bound` | ~50 min |
+| Figure 7, Table 3 | `python -m experiments.robotarm_slope_fit` (reads `results/robotarm_dimension_scaling/loglog_slopes.csv`) | seconds |
+| Figure 8 | `python -m experiments.robotarm_time_sweep` | ~30 min (estimate) |
+| Figures 9 and 10 | `python -m experiments.adversarial_intensity` | ~12 min |
 
 \*On a 16-thread AMD Ryzen 7 7735HS.  The robot-arm scripts spread MuJoCo rollouts over all CPU cores;
 the other scripts are single-threaded.
@@ -142,23 +143,23 @@ the other scripts are single-threaded.
 Regenerate every figure and table from the shipped results:
 
 ```shell
-for s in fig1_quadratic_illustration fig2_lipschitz_validation fig3_robotarm_dim_scaling \
-         fig6_density_lower_bound fig8_robotarm_time_sweep fig9_10_adversarial_intensity; do
+for s in quadratic_flow_illustration lipschitz_bound_validation robotarm_dimension_scaling \
+         density_lower_bound robotarm_time_sweep adversarial_intensity; do
     python -m experiments.$s --plot-only
 done
-python -m experiments.fig7_slope_fit
+python -m experiments.robotarm_slope_fit
 ```
 
 Useful options:
 
 ```shell
 # subsets of the sweeps
-python -m experiments.fig3_robotarm_dim_scaling --methods uniform --n_values 2 --budgets 1,10,100
-python -m experiments.fig6_density_lower_bound --budgets 10,100,1000 --seeds 10
-python -m experiments.fig9_10_adversarial_intensity --estimators christoffel
+python -m experiments.robotarm_dimension_scaling --methods uniform --n_values 2 --budgets 1,10,100
+python -m experiments.density_lower_bound --budgets 10,100,1000 --seeds 10
+python -m experiments.adversarial_intensity --estimators christoffel
 
 # robot arm: distance to the convex hull of the samples instead of to the samples
-python -m experiments.fig3_robotarm_dim_scaling --metric convex_hull
+python -m experiments.robotarm_dimension_scaling --metric convex_hull
 
 # tests
 python -m pytest
@@ -181,15 +182,15 @@ reachapprox/                     # shared library
    ├─ arm.py                     # MuJoCo n-link arm, inverse-dynamics tracking controller, parallel rollouts
    ├─ sampling.py                # uniform box sampling and Algorithm 1 on the box
    └─ metrics.py                 # directed Hausdorff to the sample cloud / to its convex hull
-experiments/                     # one script per figure; python -m experiments.<name>
-├─ fig1_quadratic_illustration.py
-├─ fig2_lipschitz_validation.py
-├─ fig3_robotarm_dim_scaling.py  # also Table 2 and Table 4
-├─ fig6_density_lower_bound.py
-├─ fig7_slope_fit.py             # also Table 3
-├─ fig8_robotarm_time_sweep.py
-└─ fig9_10_adversarial_intensity.py
-results/<figure>/                # per-trial CSVs, tables, and the figures used in the paper
+experiments/                     # one script per experiment; python -m experiments.<name>
+├─ quadratic_flow_illustration.py   # Figure 1: x' = x^2, disk vs. star
+├─ lipschitz_bound_validation.py    # Figure 2: x' = x, empirical error vs. Theorems 1-2
+├─ robotarm_dimension_scaling.py    # Figure 3, Tables 2 and 4: robot arm, uniform vs. adversarial
+├─ density_lower_bound.py           # Figure 6: vanishing boundary density
+├─ robotarm_slope_fit.py            # Figure 7, Table 3: slope vs. state dimension
+├─ robotarm_time_sweep.py           # Figure 8: robot arm, error vs. horizon
+└─ adversarial_intensity.py         # Figures 9 and 10: number of adversarial updates
+results/<experiment>/               # per-trial CSVs, tables, and figures, one folder per script
 tests/                           # flows, geometry, estimators, samplers, metrics
 ```
 
@@ -207,17 +208,23 @@ tests/                           # flows, geometry, estimators, samplers, metric
   * *Code.* The experiments sample the plain box $[-0.1, 0.1]^{2n}$.  The opening only rounds the
     corners and removes a negligible fraction of the volume.
 * **Adversarial robot-arm data.**
-  * *Shipped data.* `results/fig3/fig3_trials.csv` holds the per-seed errors behind the paper.  The
+  * *Shipped data.* `results/robotarm_dimension_scaling/trials.csv` holds the per-seed errors behind the paper.  The
     uniform rows are reproduced exactly by the script.
   * *Lost version.* The adversarial rows came from an earlier, unrecorded variant of the sampler.
   * *Current sampler.* The script implements Algorithm 1 with $n_{\rm adv} = 1$ and $\eta = 0.2$.  The
-    MuJoCo flow is not differentiated, so the flow Jacobian is replaced by the identity.  ADV_RERUN
+    MuJoCo flow is not differentiated, so the flow Jacobian is replaced by the identity.
+  * *Rerun result.* A full rerun with this sampler and the point-cloud metric gives **no improvement over
+    uniform sampling**.  The adversarial slopes are −0.280, −0.212 and −0.176, against −0.281, −0.209 and
+    −0.166 for uniform.  So the adversarial rows of Table 2, Table 4 and Figure 3 (right) cannot currently
+    be regenerated from code.
+  * *Figures 9 and 10.* The planar adversarial sampler behind these figures is fully reproducible.
 * **Controller.** The paper's tracking controller is
   $\tau = M(q)\ddot q_d + C(q,v)v + g(q) - K_p e - K_d\dot e$ with $K_p = 0.01$, $K_d = 0.005$, clipped to
   $\pm100$.  The feed-forward term is computed with MuJoCo's inverse dynamics, which also compensates the
   joint damping.
 * **Determinism.** Every trial has its own seed.  The planar scripts reproduce the shipped CSVs bit for
-  bit, and the robot-arm scripts agree to the 12 significant digits stored in the CSVs.
+  bit.  The uniform robot-arm runs (Figure 3) and the time sweep (Figure 8) agree with the paper data to
+  the 12 significant digits stored in the CSVs.
 
 
 ## Citation

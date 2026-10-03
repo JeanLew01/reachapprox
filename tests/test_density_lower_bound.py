@@ -3,7 +3,7 @@ from scipy.stats import beta as beta_distribution
 from scipy.stats import kstest
 from scipy.spatial import cKDTree
 
-from experiments.fig6_density_lower_bound import (
+from experiments.density_lower_bound import (
     SUPPORT_CENTER,
     distance_to_ellipse,
     ellipse_boundary,

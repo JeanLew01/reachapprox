@@ -5,8 +5,8 @@ propagated to T in linspace(0.01, 2, 11).  The error is the directed Hausdorff
 distance from a 1,000-point subset of a 5,000-point reference cloud to the
 sampled endpoints, averaged over 5 seeds.
 
-    python -m experiments.fig8_robotarm_time_sweep
-    python -m experiments.fig8_robotarm_time_sweep --plot-only
+    python -m experiments.robotarm_time_sweep
+    python -m experiments.robotarm_time_sweep --plot-only
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 
+from reachapprox.robotarm.metrics import point_cloud_directed_hausdorff
 from reachapprox.utils import RESULTS_DIR, mean_ci95, read_csv, use_serif_fonts, write_csv
 
 
@@ -28,15 +29,14 @@ REF_SUBSET = 1000
 REFERENCE_SEED = 202606 + 30_000
 EXPERIMENT_SEED = 77531 + 700_000
 
-OUT_DIR = RESULTS_DIR / "fig8"
-TRIALS_CSV = OUT_DIR / "fig8_trials.csv"
-FIGURE_PATH = OUT_DIR / "fig8_robotarm_time_sweep.png"
+OUT_DIR = RESULTS_DIR / "robotarm_time_sweep"
+TRIALS_CSV = OUT_DIR / "trials.csv"
+FIGURE_PATH = OUT_DIR / "robotarm_time_sweep.png"
 
 
 def run_experiment(link_counts) -> list[dict]:
     # Imported here so that --plot-only works without MuJoCo.
     from reachapprox.robotarm.arm import propagate
-    from reachapprox.robotarm.metrics import point_cloud_directed_hausdorff
     from reachapprox.robotarm.sampling import sample_initial_box
 
     rows = []

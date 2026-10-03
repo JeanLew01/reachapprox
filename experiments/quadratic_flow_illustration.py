@@ -7,11 +7,11 @@ hull of the endpoints, discretized on a 170 x 170 grid, and the error is the
 symmetric Hausdorff distance to a dense cloud of 35,000 propagated points,
 averaged over 50 trials.
 
-Outputs (results/fig1/): snapshots, error vs. sample size (T = 0.22), and
+Outputs (results/quadratic_flow_illustration/): snapshots, error vs. sample size (T = 0.22), and
 error vs. time (N = 1000), saved as three panels.
 
-    python -m experiments.fig1_quadratic_illustration
-    python -m experiments.fig1_quadratic_illustration --plot-only
+    python -m experiments.quadratic_flow_illustration
+    python -m experiments.quadratic_flow_illustration --plot-only
 """
 
 from __future__ import annotations
@@ -39,11 +39,11 @@ N_TRUE_POINTS = 35_000
 N_SNAPSHOT_SAMPLES = 500
 RANDOM_SEED = 7
 
-OUT_DIR = RESULTS_DIR / "fig1"
-TRIALS_CSV = OUT_DIR / "fig1_trials.csv"
-SNAPSHOT_FIGURE = OUT_DIR / "fig1_snapshots.png"
-SAMPLES_FIGURE = OUT_DIR / "fig1_error_vs_samples.png"
-TIME_FIGURE = OUT_DIR / "fig1_error_vs_time.png"
+OUT_DIR = RESULTS_DIR / "quadratic_flow_illustration"
+TRIALS_CSV = OUT_DIR / "trials.csv"
+SNAPSHOT_FIGURE = OUT_DIR / "snapshots.png"
+SAMPLES_FIGURE = OUT_DIR / "error_vs_samples.png"
+TIME_FIGURE = OUT_DIR / "error_vs_time.png"
 
 STYLES = {
     "disk": {"label": "disk", "color": "#d62728", "marker": "o"},

@@ -11,8 +11,8 @@ are exact: r ~ Beta(2, beta + 1), angle uniform.  Convex-hull, fixed-radius
 union-of-balls (h = 0.05) and Christoffel estimators are compared over 50
 seeds; the curves are the mean symmetric Hausdorff error with 5-95% bands.
 
-    python -m experiments.fig6_density_lower_bound
-    python -m experiments.fig6_density_lower_bound --plot-only
+    python -m experiments.density_lower_bound
+    python -m experiments.density_lower_bound --plot-only
 """
 
 from __future__ import annotations
@@ -53,9 +53,9 @@ COLORS = {0: "#2a6fbb", 2: "#e07a1f", 4: "#c83e4d"}
 LINESTYLES = {0: "-", 2: "--", 4: "-."}
 LABELS = {0: r"$\beta=0$ (uniform)", 2: r"$\beta=2$", 4: r"$\beta=4$"}
 
-OUT_DIR = RESULTS_DIR / "fig6"
-RAW_CSV = OUT_DIR / "fig6_trials.csv"
-FIGURE_PATH = OUT_DIR / "fig6_density_lower_bound.png"
+OUT_DIR = RESULTS_DIR / "density_lower_bound"
+RAW_CSV = OUT_DIR / "trials.csv"
+FIGURE_PATH = OUT_DIR / "density_lower_bound.png"
 
 ELLIPSE_AXES = (np.exp(GROWTH_RATE * FINAL_TIME), 1.0)
 

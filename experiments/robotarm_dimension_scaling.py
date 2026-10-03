@@ -6,14 +6,14 @@ N, endpoints are drawn by uniform sampling or by Algorithm 1 (adversarial
 sampling), and the error is the directed Hausdorff distance from a 2,000-point
 subset of a 20,000-point reference cloud to the sampled endpoints.
 
-Outputs (results/fig3/):
-  fig3_trials.csv                          per-seed errors
-  fig3_uniform.png, fig3_adversarial.png   Figure 3
-  table2_slopes.csv                        Table 2: log-log slopes of mean error vs N
-  table4_improvement.csv                   Table 4: adversarial improvement over uniform
+Outputs (results/robotarm_dimension_scaling/):
+  trials.csv                                       per-seed errors
+  uniform_sampling.png, adversarial_sampling.png   Figure 3
+  loglog_slopes.csv                                Table 2: log-log slopes of mean error vs N
+  adversarial_improvement.csv                      Table 4: adversarial improvement over uniform
 
-    python -m experiments.fig3_robotarm_dim_scaling                 # several CPU-hours
-    python -m experiments.fig3_robotarm_dim_scaling --plot-only     # figures/tables from CSV
+    python -m experiments.robotarm_dimension_scaling                 # several CPU-hours
+    python -m experiments.robotarm_dimension_scaling --plot-only     # figures/tables from CSV
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 
+from reachapprox.robotarm.metrics import convex_hull_directed_hausdorff, point_cloud_directed_hausdorff
 from reachapprox.utils import RESULTS_DIR, mean_ci95, read_csv, use_serif_fonts, write_csv
 
 
@@ -36,16 +37,14 @@ REFERENCE_SEED = 202606
 EXPERIMENT_SEED = 77531
 ADVERSARIAL_SEED_OFFSET = 500_000
 
-OUT_DIR = RESULTS_DIR / "fig3"
-TRIALS_CSV = OUT_DIR / "fig3_trials.csv"
-SLOPES_CSV = OUT_DIR / "table2_slopes.csv"
-IMPROVEMENT_CSV = OUT_DIR / "table4_improvement.csv"
+OUT_DIR = RESULTS_DIR / "robotarm_dimension_scaling"
+TRIALS_CSV = OUT_DIR / "trials.csv"
+SLOPES_CSV = OUT_DIR / "loglog_slopes.csv"
+IMPROVEMENT_CSV = OUT_DIR / "adversarial_improvement.csv"
 TITLES = {"uniform": "Robot-Arm Uniform Sampling", "adversarial": "Robot-Arm Adversarial Sampling"}
 
 
 def directed_error(metric: str, ref: np.ndarray, samples: np.ndarray, seed: int) -> float:
-    from reachapprox.robotarm.metrics import convex_hull_directed_hausdorff, point_cloud_directed_hausdorff
-
     if metric == "point_cloud":
         return point_cloud_directed_hausdorff(ref, samples)
     return convex_hull_directed_hausdorff(ref, samples, np.random.default_rng(seed + 9_000_000))
@@ -119,7 +118,7 @@ def plot_method(curves, method: str) -> None:
     ax.tick_params(axis="both", labelsize=13)
     ax.grid(True, which="both", alpha=0.28)
     ax.legend(frameon=False, fontsize=12)
-    path = OUT_DIR / f"fig3_{method}.png"
+    path = OUT_DIR / f"{method}_sampling.png"
     fig.savefig(path, dpi=220, bbox_inches="tight")
     plt.close(fig)
     print(f"saved {path}")
