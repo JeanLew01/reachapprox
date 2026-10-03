@@ -1,184 +1,232 @@
-# ReachApprox
+# On the Limits of Sampling-Based Reachability: Geometry, Dynamics, and Sample Complexity
 
-This is the repo for the submission named **"On the Limits of Sampling-Based Reachability: Geometry, Dynamics, and Sample Complexity"** for
-CoRL 2026.
+<div align="center">
 
-## Project Structure
+**Jixian Liu · Ihab Tabbara · Hussein Sibai · Enrique Mallada**
 
-```bash
-├── __init__.py
-├── README.md
-├── illustration/                                # illustrations for reachable-set approximation under an autonomous non-Lipschitz system
-│   ├── __init__.py
-│   ├── hausdorff_experiment.py                 # Hausdorff-distance experiments and illustration figures under convex-hull / support estimators
-│   ├── quadratic_dynamics.py                   # non-Lipschitz dynamics: \dot y = 0, \dot x = x^2
-│   └── results/                                # generated illustration figures
-│       ├── hausdorff_vs_samples.png
-│       ├── sample_flow_schematic.png
-│       └── star_samples_flow.png
-└── exp/                                        # experiment implementations and evaluation tools
-    ├── __init__.py
-    ├── quaddynadv/                             # quadratic-dynamics uniform/adversarial sampling experiments
-    │   ├── __init__.py
-    │   ├── quaddyn_adv_experiment.py           # convex-hull reachable-set experiments for uniform vs adversarial sampling
-    │   ├── quaddyn_christoffel_mixture_experiment.py
-    │   │                                       # Christoffel and convex-hull sweeps over adversarial update counts n_adv
-    │   ├── fun/
-    │   │   ├── __init__.py
-    │   │   ├── quadratic_flow.py               # analytic flow and flow Jacobian for \dot y = 0, \dot x = x^2
-    │   │   ├── quaddyn_geometry.py             # equal-area disk / triangle / opened-triangle initial sets
-    │   │   ├── quaddyn_sampling.py             # uniform sampling, adversarial updates, and projection routines
-    │   │   └── support_estimators.py           # convex hull, Christoffel support, and Hausdorff utilities
-    │   └── results/                           
-    ├── densitylower/                          # boundary-density ablation on a fixed disk
-    │   ├── density_lower_bound_experiment.py  # convex hull, packing balls, and Christoffel
-    │   ├── paper_text.tex                     # paper/appendix LaTeX replacement text
-    │   └── results/                           # Figure 7, diagnostics, and raw/aggregate CSVs
-    └── robotarm/                               # MuJoCo n-link robot-arm uncertainty-propagation
-        ├── animate_n_link_arm.py               # optional MuJoCo passive-viewer animation script
-        ├── compute_endpoint_coverage.py        # command-line wrapper for convex-hull endpoint coverage computation
-        ├── generate_endpoint_samples.py        # terminal endpoint sample generation and diagnostic plots
-        ├── plot_fit.py                         # slope-fitting utility for robot-arm dimension-scaling results
-        ├── robotarm_dim_scaling.py             # uniform-sampling dimension-scaling experiment
-        ├── robotarm_adversarial_dim_scaling.py # adversarial-sampling dimension-scaling experiment
-        ├── robotarm_time_sweep.py              # Hausdorff-distance time-sweep experiment
-        ├── simulate_d_link_arm.py              # simulator for n-link 
-        ├── test_n_link_arm.py                  # test
-        ├── fun/                               
-        │   ├── __init__.py
-        │   ├── mujoco_n_link_arm.py            # MuJoCo XML generation, dynamics, tracking controller, rollout, rendering
-        │   ├── dim_scaling.py                  # sampling, rollout, convex-hull Hausdorff metric, shared constants
-        │   └── coverage.py                     # directed distance to conv(X_T^N) via coreset + Frank-Wolfe projection
-        └── results/                            
-            ├── robotarm_dim_scaling_n234_combined.csv
-            ├── robotarm_dim_scaling_n234_combined.png
-            ├── robotarm_adversarial_dim_scaling_n234_combined.csv
-            └── robotarm_adversarial_dim_scaling_n234_combined.png
+*10th Conference on Robot Learning (CoRL 2026), Austin, TX*
+
+[![Python Version](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[<img src="https://img.shields.io/badge/Simulator-MuJoCo%203.8-orange.svg"/>](https://mujoco.org/)
+[<img src="https://img.shields.io/badge/CoRL-2026-red.svg"/>](https://www.corl.org/)
+
+![figure 2](results/fig2/fig2_lipschitz_validation.png)
+
+</div>
+
+This repository contains the code for every experiment in the paper.  Each figure and table
+has one script, and the raw per-trial results behind it ship in `results/`.
+
+Sampling-based reachability propagates finitely many initial states through the dynamics and builds a set
+estimate $\widehat S_N$ from the endpoints.  Existing finite-sample guarantees bound the *probability mass*
+that the estimate misses.  Such a bound still allows the estimate to miss a thin region of the reachable
+set that is spatially far from the rest.  We study the
+geometric question instead: **how many endpoint samples are needed so that $d_H(S_T,\widehat S_N)\le r$**,
+where $S_T = \mathcal R_T(S_0)$ is the reachable set of $\dot x = F(x)$ from the initial set $S_0$?
+
+
+## Main results
+
+Three regularity conditions make a probability-mass guarantee upgradable to Hausdorff accuracy:
+
+* **Geometry:** the complement of $S_0$ has positive reach $r_0$, which rules out cusps and thin parts.
+* **Dynamics:** $F$ is $L$-Lipschitz, so the flow distorts distances by at most $e^{LT}$.
+* **Sampling:** the initial density is bounded below by $\rho/|S_0|$.
+
+Let $R$ be the volume-equivalent radius of $S_0$ and $n$ the state dimension.  Under these conditions:
+
+| | Sample complexity | Result |
+|---|---|---|
+| **Upper bound** (any estimator containing the samples) | $N \ge \dfrac{2^{2n}e^{nLT}R^n}{\rho\, r^n}\Big[\log\dfrac{2^{3n}e^{nLT}R^n}{r^n} + \log\dfrac1\delta\Big]$ | Theorem 1 |
+| **Minimax lower bound** (every estimator fails on some instance) | $N < \dfrac{e^{nLT}R^n}{2^{n+1} r^n}\log\dfrac{1}{2\delta}$ | Theorem 2 |
+
+The two bounds match up to logarithmic factors, so the burden $\tilde\Theta\big((e^{LT}R/r)^n\big)$ is
+intrinsic: it is exponential in the dimension and degrades exponentially with the horizon.  This is a
+property of the problem, not of any particular estimator.  The experiments show that adversarial sampling
+improves the constants but not the scaling.
+
+
+## Results
+
+### Geometry and dynamics both matter (Figures 1 and 2)
+
+**Figure 1.** On the non-Lipschitz system $\dot x = x^2,\ \dot y = 0$, the error for the star (inward
+cusps) saturates as $N$ grows.  At fixed $N$, the error blows up as the flow stretches neighborhoods.
+
+Initial sets and flow | Error vs. sample size | Error vs. horizon
+:-------------------------:|:-------------------------:|:-------------------------:
+![fig1a](results/fig1/fig1_snapshots.png) | ![fig1b](results/fig1/fig1_error_vs_samples.png) | ![fig1c](results/fig1/fig1_error_vs_time.png)
+
+**Figure 2** (top of the page) uses the Lipschitz system $\dot x = x,\ \dot y = 0$.  The circle
+($r_0 = 1$) and the opened triangle ($r_0 \approx 0.309$) satisfy the positive-reach assumption; the
+triangle ($r_0 = 0$) does not and has the largest error.  Over time the empirical curves run parallel to
+the minimax lower-bound scale, and they sit between the two theoretical curves.
+
+### The density lower bound is needed (Figure 6)
+
+**Figure 6.** The same disk support, dynamics and horizon are sampled with densities
+$p_\beta \propto (1-r)^\beta$, which vanish at the boundary for $\beta > 0$.  Full support alone does not
+give a uniform rate.  At $N = 10^6$ the Christoffel error is 0.0068, 0.0605 and 0.1800 for
+$\beta = 0, 2, 4$.
+
+![fig6](results/fig6/fig6_density_lower_bound.png)
+
+### The curse of dimensionality survives adversarial sampling (Figures 3 and 7, Tables 2–4)
+
+**Figure 3.** Closed-loop MuJoCo $n$-link arms with state dimension $2n \in \{4, 6, 8\}$, propagated to $T = 1$.
+
+Uniform sampling | Adversarial sampling | Slope fit (Figure 7)
+:-------------------------:|:-------------------------:|:-------------------------:
+![fig3a](results/fig3/fig3_uniform.png) | ![fig3b](results/fig3/fig3_adversarial.png) | ![fig7](results/fig7/fig7_slope_fit.png)
+
+**Table 2.** Log–log slopes of the mean Hausdorff error against $N$:
+
+| State dimension | 4 | 6 | 8 |
+|---|---|---|---|
+| Uniform sampling | −0.2806 | −0.2094 | −0.1662 |
+| Adversarial sampling | −0.3535 | −0.2701 | −0.2224 |
+
+* **Adversarial vs. uniform.** Adversarial sampling has the steeper slope in every dimension, and it
+  improves the mean error at $N = 3000$ by 39%, 36% and 31% (Table 4).
+* **Dimension.** Both methods flatten as the dimension grows.
+* **Fit (Table 3).** The fit $|{\rm slope}(d)| \approx 1/(a d^b + c)$ gives the following inverse-rate
+  exponents $a d^b + c$:
+  * uniform: $0.5049\,d^{1.0709} + 1.3353$;
+  * adversarial: $0.9488\,d^{0.7203} + 0.2535$.
+
+  Both exponents grow with the dimension.
+
+### Supplementary experiments (Figures 8–10)
+
+Robot-arm error vs. horizon (Figure 8) | Adversarial intensity, convex hull, $N = 1000$ (Figure 9)
+:-------------------------:|:-------------------------:
+![fig8](results/fig8/fig8_robotarm_time_sweep.png) | ![fig9](results/fig9_10/fig9_convex_hull_N1000.png)
+
+* **Figure 8.** Under the tracking controller the error grows only slowly with $T$.  The worst-case
+  $e^{nLT}$ is a minimax rate, not an instance rate.
+* **Figures 9 and 10.** These sweep the number of adversarial updates $n_{\rm adv}$ for the convex-hull
+  and Christoffel estimators.  Adversarial updates help only once the budget is large enough to keep
+  global coverage.
+
+
+## Installation
+
+```shell
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Main Experiments
+MuJoCo is needed only to *run* the robot-arm experiments (Figures 3 and 8).  Re-plotting from the shipped
+CSVs and all planar experiments need only NumPy, SciPy, Matplotlib and Shapely.
 
-### Quadratic Dynamics
 
-The quadratic-dynamics experiments use the autonomous non-Lipschitz system
+## Reproduce the paper
 
-$$
-    \dot x = x^2,\qquad \dot y = 0.
-$$
+Run every command from the repository root.  Each script writes per-trial results to `results/<figure>/*.csv`
+and then plots from them.  `--plot-only` skips the experiment and regenerates the figures and tables from
+the shipped CSVs, in seconds.
 
-The scripts compare uniform sampling, adversarial sampling, convex-hull
-estimators, and Christoffel-type support estimators over several initial-set
-geometries.
+| Paper item | Command | Run time* |
+|---|---|---|
+| Figure 1 | `python -m experiments.fig1_quadratic_illustration` | ~10 min |
+| Figure 2 | `python -m experiments.fig2_lipschitz_validation` | FIG2_TIME |
+| Figure 3, Table 2, Table 4 | `python -m experiments.fig3_robotarm_dim_scaling` | FIG3_TIME |
+| Figure 6 | `python -m experiments.fig6_density_lower_bound` | FIG6_TIME |
+| Figure 7, Table 3 | `python -m experiments.fig7_slope_fit` (reads `results/fig3/table2_slopes.csv`) | seconds |
+| Figure 8 | `python -m experiments.fig8_robotarm_time_sweep` | FIG8_TIME |
+| Figures 9 and 10 | `python -m experiments.fig9_10_adversarial_intensity` | FIG910_TIME |
 
-Typical commands from `../`:
+\*On a 16-thread AMD Ryzen 7 7735HS.  The robot-arm scripts spread MuJoCo rollouts over all CPU cores;
+the other scripts are single-threaded.
 
-for example:
-```bash
-.venv/bin/python -u reachapprox/illustration/hausdorff_experiment.py
-.venv/bin/python -u reachapprox/exp/quaddynadv/quaddyn_adv_experiment.py
-.venv/bin/python -u reachapprox/exp/quaddynadv/quaddyn_christoffel_mixture_experiment.py
+Regenerate every figure and table from the shipped results:
+
+```shell
+for s in fig1_quadratic_illustration fig2_lipschitz_validation fig3_robotarm_dim_scaling \
+         fig6_density_lower_bound fig8_robotarm_time_sweep fig9_10_adversarial_intensity; do
+    python -m experiments.$s --plot-only
+done
+python -m experiments.fig7_slope_fit
 ```
 
-### Density Lower Bound
+Useful options:
 
-The density-lower-bound ablation uses the globally Lipschitz linear system
+```shell
+# subsets of the sweeps
+python -m experiments.fig3_robotarm_dim_scaling --methods uniform --n_values 2 --budgets 1,10,100
+python -m experiments.fig6_density_lower_bound --budgets 10,100,1000 --seeds 10
+python -m experiments.fig9_10_adversarial_intensity --estimators christoffel
 
-$$
-    \dot x = 2x,\qquad \dot y = 0,
-$$
+# robot arm: distance to the convex hull of the samples instead of to the samples
+python -m experiments.fig3_robotarm_dim_scaling --metric convex_hull
 
-at $T=0.5$. The initial support is always the radius-one disk centered at
-$(1,0)$, so the exact terminal support is the ellipse
-$(X-e^{2T})^2/e^{4T}+Y^2\le1$. Only the sampling density changes:
-$p_\beta(x,y)\propto(1-\sqrt{(x-1)^2+y^2})^\beta$ for
-$\beta\in\{0,2,4\}$. All three distributions have the same closed-disk
-support, while the latter two vanish at the boundary. The experiment compares
-convex-hull, packing-ball-union, and Christoffel estimators over 50 common seed
-indices and
-$N\in\{10,30,100,300,1000,3000,10000,30000,100000,300000,1000000\}$.
-
-```bash
-.venv/bin/python -u exp/densitylower/density_lower_bound_experiment.py
+# tests
+python -m pytest
 ```
 
-### Robot Arm
+Figures 4 and 5 are schematic drawings, and Table 1 restates Theorems 1 and 2, so none of them has a script.
 
-The robot-arm benchmark uses MuJoCo vertical planar serial $n$-link arms with
-$n \in \{2,3,4\}$. The state is
 
-$$
-    x = [q^\top, v^\top]^\top \in \mathbb{R}^{2n}.
-$$
-
-MuJoCo simulates rigid-body dynamics
-
-$$
-    M(q)\dot v + C(q,v)v + g(q) = \tau.
-$$
-
-The controller is a fixed weak adaptive inverse-dynamics tracking controller for
-a slowly varying reference trajectory. This benchmark is for closed-loop
-uncertainty propagation, not controller design or online safety enforcement.
-
-The initial uncertainty set is the box
-
-$$
-    q_0 \in [-\rho_q,\rho_q]^n,\qquad
-    v_0 \in [-\rho_v,\rho_v]^n,
-$$
-
-with default $\rho_q=\rho_v=0.1$.
-
-The current robot-arm Hausdorff metric is the directed distance from a reference
-terminal cloud to the sampled convex-hull estimator:
-
-$$
-    \max_{z \in X_T^{\rm ref}}
-    \mathrm{dist}\left(z,\mathrm{conv}(X_T^N)\right).
-$$
-
-In CSV files, this appears as
+## Code structure
 
 ```text
-metric_implementation = directed_hausdorff_to_convex_hull
+reachapprox/                     # shared library
+├─ flows.py                      # analytic flows: x' = x^2 (+ Jacobian), x' = a x
+├─ geometry.py                   # disk, star, (opened) triangle; uniform sampling, boundary points, projection
+├─ estimators.py                 # convex hull, Christoffel sublevel set, evaluation grids
+├─ metrics.py                    # Hausdorff distances between clouds, boundaries and estimates
+├─ adversarial.py                # Algorithm 1 for the planar quadratic system
+├─ utils.py                      # seeding, 95% CIs, CSV I/O, plotting helpers
+└─ robotarm/
+   ├─ arm.py                     # MuJoCo n-link arm, inverse-dynamics tracking controller, parallel rollouts
+   ├─ sampling.py                # uniform box sampling and Algorithm 1 on the box
+   └─ metrics.py                 # directed Hausdorff to the sample cloud / to its convex hull
+experiments/                     # one script per figure; python -m experiments.<name>
+├─ fig1_quadratic_illustration.py
+├─ fig2_lipschitz_validation.py
+├─ fig3_robotarm_dim_scaling.py  # also Table 2 and Table 4
+├─ fig6_density_lower_bound.py
+├─ fig7_slope_fit.py             # also Table 3
+├─ fig8_robotarm_time_sweep.py
+└─ fig9_10_adversarial_intensity.py
+results/<figure>/                # per-trial CSVs, tables, and the figures used in the paper
+tests/                           # flows, geometry, estimators, samplers, metrics
 ```
 
-Typical commands from `../`:
 
-for example
-```bash
-.venv/bin/python -u reachapprox/exp/robotarm/robotarm_dim_scaling.py --n_values 2,3,4
-.venv/bin/python -u reachapprox/exp/robotarm/robotarm_adversarial_dim_scaling.py --n_adv 1 --eta 0.20
-.venv/bin/python -u reachapprox/exp/robotarm/robotarm_time_sweep.py --n_values 2,3,4
+## Notes
+
+* **Robot-arm error metric.**
+  * *What the paper reports.* Figure 3, Tables 2–4 and Figure 8 use the directed Hausdorff distance from
+    a reference endpoint cloud to the *sample cloud*, $\max_{z\in Y_{\rm ref}}\min_i\|z - Y_i\|$.  This is
+    the inner error that Theorem 1 controls, and it upper-bounds the inner error of any estimator that
+    contains the samples.
+  * *Option.* `--metric convex_hull` measures the distance to the convex hull of the samples instead.
+* **Robot-arm initial set.**
+  * *Paper text.* Appendix C.1 writes $S_0$ as the box opened by a ball of radius 0.01.
+  * *Code.* The experiments sample the plain box $[-0.1, 0.1]^{2n}$.  The opening only rounds the
+    corners and removes a negligible fraction of the volume.
+* **Adversarial robot-arm data.**
+  * *Shipped data.* `results/fig3/fig3_trials.csv` holds the per-seed errors behind the paper.  The
+    uniform rows are reproduced exactly by the script.
+  * *Lost version.* The adversarial rows came from an earlier, unrecorded variant of the sampler.
+  * *Current sampler.* The script implements Algorithm 1 with $n_{\rm adv} = 1$ and $\eta = 0.2$.  The
+    MuJoCo flow is not differentiated, so the flow Jacobian is replaced by the identity.  ADV_RERUN
+* **Controller.** The paper's tracking controller is
+  $\tau = M(q)\ddot q_d + C(q,v)v + g(q) - K_p e - K_d\dot e$ with $K_p = 0.01$, $K_d = 0.005$, clipped to
+  $\pm100$.  The feed-forward term is computed with MuJoCo's inverse dynamics, which also compensates the
+  joint damping.
+* **Determinism.** Every trial has its own seed.  The planar scripts reproduce the shipped CSVs bit for
+  bit, and the robot-arm scripts agree to the 12 significant digits stored in the CSVs.
+
+
+## Citation
+
+```bibtex
+@inproceedings{liu2026limits,
+  title     = {On the Limits of Sampling-Based Reachability: Geometry, Dynamics, and Sample Complexity},
+  author    = {Liu, Jixian and Tabbara, Ihab and Sibai, Hussein and Mallada, Enrique},
+  booktitle = {Conference on Robot Learning (CoRL)},
+  year      = {2026}
+}
 ```
-
-Viewer and endpoint-generation scripts should be run from
-`reachapprox/exp/robotarm`:
-
-for example
-```bash
-python test_n_link_arm.py
-python generate_endpoint_samples.py --n 2 --N 3000 --T 1.0
-python animate_n_link_arm.py --n 3 --T 1.0
-```
-
-## Requirements
-
-Core experiments use:
-
-```text
-numpy==1.26.4
-scipy==1.17.1
-matplotlib==3.10.8
-shapely==2.1.2
-```
-
-Robot-arm experiments additionally use:
-
-```text
-mujoco==3.8.1
-imageio==2.37.3
-```
-
-MuJoCo rendering and passive viewer scripts are optional. Dynamics and endpoint
-sampling do not require a GPU.

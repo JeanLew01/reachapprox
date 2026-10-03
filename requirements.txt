@@ -1,0 +1,6 @@
+numpy==1.26.4
+scipy==1.17.1
+matplotlib==3.10.8
+shapely==2.1.2
+mujoco==3.8.1     # robot-arm experiments only (Figures 3 and 8)
+pytest==9.1.1
