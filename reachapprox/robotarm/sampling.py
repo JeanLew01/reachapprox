@@ -10,7 +10,7 @@ from .arm import propagate
 RHO_Q = 0.1
 RHO_V = 0.1
 N_ADV = 1
-ETA = 0.20
+ETA = 0.05
 LAMBDA_REG = 1e-4
 
 

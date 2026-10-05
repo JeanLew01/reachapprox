@@ -1,9 +1,8 @@
 """Directed Hausdorff errors for the robot-arm endpoint clouds.
 
-The paper's robot-arm numbers (Figure 3, Tables 2-4, Figure 8) use the
-point-cloud metric  max_{z in Y_ref} min_i ||z - Y_i||.  The distance to the
-convex hull of the samples,  max_{z in Y_ref} dist(z, conv(Y_1..Y_N)),  is
-available as an alternative.
+The dimension-scaling experiment uses the distance from reference endpoints to
+the convex hull of the samples,  max_{z in Y_ref} dist(z, conv(Y_1..Y_N)).  The
+time sweep uses the point-cloud distance  max_{z in Y_ref} min_i ||z - Y_i||.
 """
 
 from __future__ import annotations

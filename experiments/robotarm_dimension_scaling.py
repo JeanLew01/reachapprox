@@ -3,8 +3,9 @@
 Closed-loop vertical n-link arms (n = 2, 3, 4; state dimension 2n) are
 propagated in MuJoCo to T = 1 from the box [-0.1, 0.1]^{2n}.  For each budget
 N, endpoints are drawn by uniform sampling or by Algorithm 1 (adversarial
-sampling), and the error is the directed Hausdorff distance from a 2,000-point
-subset of a 20,000-point reference cloud to the sampled endpoints.
+sampling, n_adv = 1, eta = 0.05).  The reachable set is estimated by the convex
+hull of the endpoints, and the error is the directed Hausdorff distance from a
+2,000-point subset of a 20,000-point reference cloud to that hull.
 
 Outputs (results/robotarm_dimension_scaling/):
   trials.csv                                       per-seed errors
@@ -14,6 +15,7 @@ Outputs (results/robotarm_dimension_scaling/):
 
     python -m experiments.robotarm_dimension_scaling                 # several CPU-hours
     python -m experiments.robotarm_dimension_scaling --plot-only     # figures/tables from CSV
+    python -m experiments.robotarm_dimension_scaling --methods adversarial   # keep saved uniform rows
 """
 
 from __future__ import annotations
@@ -29,7 +31,8 @@ from reachapprox.utils import RESULTS_DIR, mean_ci95, read_csv, use_serif_fonts,
 
 LINK_COUNTS = (2, 3, 4)
 SAMPLE_BUDGETS = (1, 3, 10, 30, 100, 300, 1000, 3000)
-N_SEEDS = 10
+N_SEEDS = 30
+N_BOOTSTRAP = 2000
 N_REF = 20_000
 REF_SUBSET = 2_000
 T_HORIZON = 1.0
@@ -125,11 +128,19 @@ def plot_method(curves, method: str) -> None:
 
 
 def loglog_slopes(curves) -> list[dict]:
-    """Table 2: slope of log(mean error) vs log N over all budgets."""
+    """Table 2: slope of log(mean error) vs log N over all budgets, with a 95% seed-bootstrap CI."""
+    rng = np.random.default_rng(0)
     rows = []
     for (method, n), (budgets, values) in curves.items():
-        slope = float(np.polyfit(np.log(budgets), np.log(values.mean(axis=1)), 1)[0])
-        rows.append({"method": method, "n": n, "state_dim": 2 * n, "slope": slope})
+        log_budgets = np.log(budgets)
+        slope = float(np.polyfit(log_budgets, np.log(values.mean(axis=1)), 1)[0])
+        # Resample seeds independently per budget and refit the slope of the mean curve.
+        picks = rng.integers(0, values.shape[1], size=(N_BOOTSTRAP, *values.shape))
+        boot_means = np.take_along_axis(values[None, :, :], picks, axis=2).mean(axis=2)
+        boot_slopes = np.polyfit(log_budgets, np.log(boot_means).T, 1)[0]
+        low, high = np.quantile(boot_slopes, [0.025, 0.975])
+        rows.append({"method": method, "n": n, "state_dim": 2 * n, "slope": slope,
+                     "ci95_low": float(low), "ci95_high": float(high)})
     return rows
 
 
@@ -154,21 +165,25 @@ def main() -> None:
     parser.add_argument("--n_values", default=",".join(map(str, LINK_COUNTS)))
     parser.add_argument("--budgets", default=",".join(map(str, SAMPLE_BUDGETS)))
     parser.add_argument("--n_seeds", type=int, default=N_SEEDS)
-    parser.add_argument("--metric", choices=("point_cloud", "convex_hull"), default="point_cloud",
-                        help="directed Hausdorff to the sample cloud (paper) or to its convex hull")
+    parser.add_argument("--metric", choices=("convex_hull", "point_cloud"), default="convex_hull",
+                        help="directed Hausdorff to the convex hull of the samples, or to the samples themselves")
     args = parser.parse_args()
     use_serif_fonts("DejaVu Serif")
 
     if args.plot_only:
         rows = read_csv(TRIALS_CSV)
     else:
+        methods = args.methods.split(",")
         rows = run_experiment(
-            args.methods.split(","),
+            methods,
             tuple(int(n) for n in args.n_values.split(",")),
             tuple(int(N) for N in args.budgets.split(",")),
             args.n_seeds,
             args.metric,
         )
+        # Rerunning a subset of methods keeps the saved rows of the other methods.
+        if TRIALS_CSV.exists():
+            rows = [row for row in read_csv(TRIALS_CSV) if row["method"] not in methods] + rows
         write_csv(rows, TRIALS_CSV)
         print(f"saved {TRIALS_CSV}")
 
@@ -180,7 +195,8 @@ def main() -> None:
     write_csv(slopes, SLOPES_CSV)
     print("\nTable 2: log-log slopes")
     for row in slopes:
-        print(f"  {row['method']:<12} dim={row['state_dim']}: {row['slope']:.4f}")
+        print(f"  {row['method']:<12} dim={row['state_dim']}: {row['slope']:.4f} "
+              f"(95% CI {row['ci95_low']:.4f} to {row['ci95_high']:.4f})")
 
     improvement = improvement_table(curves)
     if improvement:

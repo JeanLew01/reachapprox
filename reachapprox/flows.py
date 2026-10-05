@@ -32,3 +32,22 @@ def linear_flow(points: np.ndarray, T: float, rate: float = 1.0) -> np.ndarray:
     out = np.asarray(points, dtype=float).copy()
     out[:, 0] *= np.exp(rate * T)
     return out
+
+
+def spiral_flow(points: np.ndarray, T: float, rate: float, omega: float) -> np.ndarray:
+    """Flow of x' = M x with M = [[rate, -omega], [omega, rate]]: phi(T, x) = e^{rate T} Rot(omega T) x.
+
+    The one-sided Lipschitz constant of the field is `rate`, its Lipschitz
+    constant is sqrt(rate^2 + omega^2); T < 0 gives the inverse flow.
+    """
+    cos, sin = np.cos(omega * T), np.sin(omega * T)
+    return np.exp(rate * T) * np.asarray(points, dtype=float) @ np.array([[cos, sin], [-sin, cos]])
+
+
+def cubic_damping_flow(points: np.ndarray, T: float) -> np.ndarray:
+    """Flow of x' = -|x|^2 x: phi(T, x) = x / sqrt(1 + 2 T |x|^2); T < 0 gives the inverse flow."""
+    points = np.asarray(points, dtype=float)
+    denom = 1.0 + 2.0 * T * np.sum(points * points, axis=1)
+    if np.any(denom <= 0.0):
+        raise ValueError("Flow is singular for at least one point.")
+    return points / np.sqrt(denom)[:, None]

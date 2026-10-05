@@ -1,0 +1,11 @@
+set,angle_deg,quantity,variable,fit_range,slope,predicted
+disk,0.0,mean,N,N>=1000,-0.46589099565936043,-0.5
+square,0.0,mean,N,N>=1000,-0.4647366244200578,-0.5
+triangle,60.0,mean,N,N>=1000,-0.4737569010760322,-0.5
+triangle,30.0,mean,N,N>=1000,-0.483727730526976,-0.5
+triangle,15.0,mean,N,N>=1000,-0.48625083454686596,-0.5
+triangle,7.5,mean,N,N>=1000,-0.4859443019173439,-0.5
+cusp,0.0,mean,N,N>=1000,-0.3399518852163656,-0.3333333333333333
+triangle,<=7.5,mean,kappa,N=10000,-0.4861159745704129,-0.5
+triangle,<=7.5,q95,kappa,N=10000,-0.5118360003255971,-0.5
+triangle,<=7.5,corner_mean,kappa,N=10000,-0.4969331215159058,-0.5

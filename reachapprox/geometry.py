@@ -10,8 +10,11 @@ from dataclasses import dataclass
 
 from matplotlib.path import Path as MplPath
 import numpy as np
+from scipy.optimize import linprog
+import shapely
 from shapely import affinity
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, MultiPolygon, Point, Polygon, box
+from shapely.geometry.polygon import orient
 
 
 CENTER = np.array([2.0, 0.0])
@@ -85,6 +88,75 @@ def star_set(outer_radius: float = 1.0) -> Polygon:
     return Polygon(CENTER + np.column_stack((radii * np.cos(angles), radii * np.sin(angles))))
 
 
+def isosceles_triangle(apex_angle: float) -> Polygon:
+    """Isosceles triangle with the given apex angle, area pi and centroid at (2, 0); the apex points along +x."""
+    leg = np.sqrt(2.0 * TARGET_AREA / np.sin(apex_angle))
+    height, half_base = leg * np.cos(apex_angle / 2.0), leg * np.sin(apex_angle / 2.0)
+    return Polygon(
+        [
+            [CENTER[0] + 2.0 * height / 3.0, CENTER[1]],
+            [CENTER[0] - height / 3.0, CENTER[1] + half_base],
+            [CENTER[0] - height / 3.0, CENTER[1] - half_base],
+        ]
+    )
+
+
+def square_set() -> Polygon:
+    """Axis-aligned square with area pi centered at (2, 0)."""
+    half = 0.5 * np.sqrt(TARGET_AREA)
+    return box(CENTER[0] - half, CENTER[1] - half, CENTER[0] + half, CENTER[1] + half)
+
+
+def square_array_set(per_side: int = 3, pitch_ratio: float = 8.0) -> MultiPolygon:
+    """per_side^2 equal squares of total area pi on a lattice of pitch pitch_ratio * side, centered at (2, 0)."""
+    half = 0.5 * np.sqrt(TARGET_AREA) / per_side
+    offsets = 2.0 * half * pitch_ratio * (np.arange(per_side) - 0.5 * (per_side - 1))
+    return MultiPolygon(
+        [
+            box(CENTER[0] + dx - half, CENTER[1] + dy - half, CENTER[0] + dx + half, CENTER[1] + dy + half)
+            for dx in offsets
+            for dy in offsets
+        ]
+    )
+
+
+def convex_polygon_standardness(geom: Polygon) -> tuple[float, float]:
+    """Standardness constants (kappa_P, h_P) of a convex polygon.
+
+    kappa_P is the smallest interior angle divided by 2 pi, and h_P is the
+    minimum over the families J of edges without a common point of
+    min_{z in P} max_{j in J} D_j(z), where D_j is the distance to the line of
+    edge j.  Only the minimal families matter: all three edges of a triangle,
+    and the pairs of non-adjacent edges otherwise.
+    """
+    vertices = np.asarray(orient(geom, 1.0).exterior.coords[:-1], dtype=float)
+    m = vertices.shape[0]
+    edges = np.roll(vertices, -1, axis=0) - vertices
+    incoming = -np.roll(edges, 1, axis=0)
+    cosines = np.sum(edges * incoming, axis=1) / (np.linalg.norm(edges, axis=1) * np.linalg.norm(incoming, axis=1))
+    kappa = float(np.min(np.arccos(np.clip(cosines, -1.0, 1.0))) / (2.0 * np.pi))
+
+    normals = np.column_stack((-edges[:, 1], edges[:, 0])) / np.linalg.norm(edges, axis=1)[:, None]
+    offsets = np.sum(normals * vertices, axis=1)
+    if m == 3:
+        families = [(0, 1, 2)]
+    else:
+        families = [(i, j) for i in range(m) for j in range(i + 2, m) if (i, j) != (0, m - 1)]
+    inside = np.column_stack((-normals, np.zeros(m)))
+    scales = []
+    for family in families:
+        rows = list(family)
+        below_t = np.column_stack((normals[rows], -np.ones(len(rows))))
+        result = linprog(
+            [0.0, 0.0, 1.0],
+            A_ub=np.vstack((below_t, inside)),
+            b_ub=np.concatenate((offsets[rows], -offsets)),
+            bounds=[(None, None)] * 3,
+        )
+        scales.append(result.fun)
+    return kappa, float(min(scales))
+
+
 def sample_disk(rng: np.random.Generator, n: int, radius: float = DISK_RADIUS) -> np.ndarray:
     """Uniform samples from the disk of the given radius centered at (2, 0)."""
     r = radius * np.sqrt(rng.random(n))
@@ -113,6 +185,34 @@ def sample_uniform_polygon(
             accepted.append(chosen)
             count += chosen.shape[0]
     return np.vstack(accepted)[:n]
+
+
+def sample_uniform_set(rng: np.random.Generator, geom: Polygon | MultiPolygon, n: int) -> np.ndarray:
+    """Uniform i.i.d. samples from a polygon or from a union of disjoint polygons."""
+    if geom.geom_type == "Polygon":
+        return sample_uniform_polygon(rng, geom, n)
+    parts = list(geom.geoms)
+    areas = np.array([part.area for part in parts])
+    counts = rng.multinomial(n, areas / areas.sum())
+    samples = [sample_uniform_polygon(rng, part, int(count)) for part, count in zip(parts, counts) if count]
+    return rng.permutation(np.vstack(samples))
+
+
+def contains_points(geom: Polygon | MultiPolygon, points: np.ndarray) -> np.ndarray:
+    """Membership of each point in a polygon or in a union of polygons."""
+    shapely.prepare(geom)
+    return shapely.contains_xy(geom, points[:, 0], points[:, 1])
+
+
+def dense_boundary(geom: Polygon | MultiPolygon, spacing: float) -> np.ndarray:
+    """Boundary points at most `spacing` apart (in arc length), together with every vertex."""
+    points = []
+    for polygon in [geom] if geom.geom_type == "Polygon" else geom.geoms:
+        ring = LineString(polygon.exterior.coords)
+        distances = np.linspace(0.0, ring.length, int(np.ceil(ring.length / spacing)), endpoint=False)
+        points.append(shapely.get_coordinates(shapely.line_interpolate_point(ring, distances)))
+        points.append(np.asarray(polygon.exterior.coords[:-1], dtype=float))
+    return np.vstack(points)
 
 
 def boundary_points(geom: Polygon, n_points: int) -> np.ndarray:

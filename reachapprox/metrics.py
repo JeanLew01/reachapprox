@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
-from scipy.spatial import cKDTree
+from scipy.spatial import QhullError, Voronoi, cKDTree
 from shapely.geometry import Polygon
 
 from .estimators import christoffel_mask, make_grid
@@ -21,6 +23,35 @@ def cloud_hausdorff(reference_points: np.ndarray, estimated_points: np.ndarray) 
     ref_to_est = cKDTree(estimated_points).query(reference_points, k=1)[0].max()
     est_to_ref = cKDTree(reference_points).query(estimated_points, k=1)[0].max()
     return float(max(ref_to_est, est_to_ref))
+
+
+def cloud_inner_error(
+    samples: np.ndarray,
+    boundary: np.ndarray,
+    contains: Callable[[np.ndarray], np.ndarray],
+) -> float:
+    """sup_{x in S} d(x, samples) for a compact planar set S, without gridding S.
+
+    The distance to the nearest sample attains its maximum over S at a Voronoi
+    vertex of the samples inside S or on the boundary of S.  `boundary` is a
+    dense point set on the boundary of S and `contains` its membership test.
+    When the samples lie in S, this is the Hausdorff distance between S and
+    the sample cloud.
+    """
+    tree = cKDTree(samples)
+    error = float(tree.query(boundary, k=1)[0].max())
+    if samples.shape[0] < 3:
+        return error
+    try:
+        vertices = Voronoi(samples).vertices
+    except QhullError:
+        return error
+    in_box = np.all((vertices >= boundary.min(axis=0)) & (vertices <= boundary.max(axis=0)), axis=1)
+    vertices = vertices[in_box]
+    vertices = vertices[contains(vertices)]
+    if vertices.shape[0]:
+        error = max(error, float(tree.query(vertices, k=1)[0].max()))
+    return error
 
 
 def boundary_hausdorff(reference_boundary: np.ndarray, estimate: Polygon, n_points: int) -> float:
