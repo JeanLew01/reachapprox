@@ -2,10 +2,12 @@
 
 A disk and a five-pointed star of the same circumradius, centered at (2, 0),
 are sampled i.i.d. uniformly and propagated by the exact (non-globally-
-Lipschitz) flow phi_T(x, y) = (x / (1 - T x), y).  The estimator is the convex
-hull of the endpoints, discretized on a 170 x 170 grid, and the error is the
-symmetric Hausdorff distance to a dense cloud of 35,000 propagated points,
-averaged over 50 trials.
+Lipschitz) flow phi_T(x, y) = (x / (1 - T x), y).  The estimator is the
+endpoint cloud itself, the smallest estimator that contains the samples, and
+the error is its exact inner Hausdorff distance to S_T, computed with the
+Voronoi construction of reachapprox.metrics.cloud_inner_error.  No convex hull
+is used, so the reported error isolates local sample coverage from the outer
+deviation of a hull.
 
 Outputs (results/quadratic_flow_illustration/): snapshots, error vs. sample size (T = 0.22), and
 error vs. time (N = 1000), saved as three panels.
@@ -21,10 +23,17 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 
-from reachapprox.estimators import convex_hull_mask, make_grid
 from reachapprox.flows import quadratic_flow
-from reachapprox.geometry import CENTER, DISK_RADIUS, boundary_points, sample_disk, sample_uniform_polygon, star_set
-from reachapprox.metrics import cloud_hausdorff
+from reachapprox.geometry import (
+    DISK_RADIUS,
+    contains_points,
+    dense_boundary,
+    disk_set,
+    sample_disk,
+    sample_uniform_polygon,
+    star_set,
+)
+from reachapprox.metrics import cloud_inner_error
 from reachapprox.utils import RESULTS_DIR, mean_ci95, power_of_ten_labels, read_csv, use_serif_fonts, write_csv
 
 
@@ -34,8 +43,7 @@ SAMPLE_SIZES = (10, 30, 100, 300, 1_000, 3_000, 10_000)
 SAMPLE_SWEEP_TIME = 0.22
 SNAPSHOT_TIMES = (0.0, 0.11, 0.22, 0.33)
 N_TRIALS = 50
-GRID_RESOLUTION = 170
-N_TRUE_POINTS = 35_000
+BOUNDARY_SPACING = 5e-4
 N_SNAPSHOT_SAMPLES = 500
 RANDOM_SEED = 7
 
@@ -49,44 +57,51 @@ STYLES = {
     "disk": {"label": "disk", "color": "#d62728", "marker": "o"},
     "star": {"label": "star", "color": "#005a9c", "marker": "s"},
 }
-STAR = star_set(DISK_RADIUS)
+GEOMETRY = {"disk": disk_set(), "star": star_set(DISK_RADIUS)}
 
 
 def sample_initial_set(rng: np.random.Generator, name: str, n: int) -> np.ndarray:
     if name == "disk":
         return sample_disk(rng, n)
-    return sample_uniform_polygon(rng, STAR, n, batch_size=max(4 * n, 1_000))
+    return sample_uniform_polygon(rng, GEOMETRY["star"], n, batch_size=max(4 * n, 1_000))
 
 
 def initial_boundary(name: str) -> np.ndarray:
-    if name == "disk":
-        angles = np.linspace(0.0, 2.0 * np.pi, 1_000, endpoint=False)
-        return CENTER + DISK_RADIUS * np.column_stack((np.cos(angles), np.sin(angles)))
-    return boundary_points(STAR, 1_200)
+    return dense_boundary(GEOMETRY[name], BOUNDARY_SPACING)
 
 
-def run_trial(rng: np.random.Generator, name: str, T: float, n_samples: int, true_points: np.ndarray) -> float:
+def reachable_contains(name: str, T: float):
+    """Membership in phi_T(S_0), tested by pulling the point back by time T."""
+    geom = GEOMETRY[name]
+
+    def contains(points: np.ndarray) -> np.ndarray:
+        return contains_points(geom, quadratic_flow(points, -T))
+
+    return contains
+
+
+def run_trial(rng: np.random.Generator, name: str, T: float, n_samples: int, boundary: np.ndarray,
+              contains) -> float:
     endpoints = quadratic_flow(sample_initial_set(rng, name, n_samples), T)
-    grid_points = make_grid(true_points, endpoints, GRID_RESOLUTION)
-    return cloud_hausdorff(true_points, grid_points[convex_hull_mask(endpoints, grid_points)])
+    return cloud_inner_error(endpoints, boundary, contains)
 
 
 def run_experiment() -> list[dict]:
     rng = np.random.default_rng(RANDOM_SEED)
-    dense_initial = {name: sample_initial_set(rng, name, N_TRUE_POINTS) for name in STYLES}
     rows = []
     for name in STYLES:
         conditions = [("time", T, TIME_SWEEP_SAMPLE_SIZE) for T in TIMES]
         conditions += [("sample", SAMPLE_SWEEP_TIME, N) for N in SAMPLE_SIZES]
         for sweep, T, N in conditions:
-            true_points = quadratic_flow(dense_initial[name], T)
+            boundary = quadratic_flow(initial_boundary(name), T)
+            contains = reachable_contains(name, T)
             errors = []
             for trial in range(N_TRIALS):
                 seed = RANDOM_SEED + trial
-                errors.append(run_trial(np.random.default_rng(seed), name, T, N, true_points))
+                errors.append(run_trial(np.random.default_rng(seed), name, T, N, boundary, contains))
                 rows.append({"sweep": sweep, "set": name, "T": T, "N": N, "trial": trial, "seed": seed,
                              "error": errors[-1]})
-            print(f"{sweep:<6} {name:<4} T={T:.4f} N={N}: mean symmetric d_H={np.mean(errors):.6f}")
+            print(f"{sweep:<6} {name:<4} T={T:.4f} N={N}: mean inner d_H={np.mean(errors):.6f}")
     return rows
 
 
@@ -145,7 +160,7 @@ def plot_error(stats: dict, sweep: str, xs: tuple, title: str, xlabel: str, path
         ax.fill_between(xs, lower, upper, color=style["color"], alpha=0.20)
     ax.set_yscale("log")
     ax.set_xlabel(xlabel, fontsize=30)
-    ax.set_ylabel("Hausdorff distance", fontsize=30)
+    ax.set_ylabel("inner Hausdorff distance", fontsize=30)
     ax.set_title(title, fontsize=28)
     ax.tick_params(axis="both", which="major", labelsize=20)
     ax.tick_params(axis="both", which="minor", labelsize=16)

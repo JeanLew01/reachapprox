@@ -255,8 +255,8 @@ def plot_figure(stats: dict) -> None:
     ax_time.set_xlabel(r"horizon $T$")
     ax_time.set_title(rf"Error vs. horizon ($N={TIME_SAMPLE_SIZE}$)")
     ax_time.set_ylim(2.5e-3, 3.0)
-    ax_time.legend(loc="lower left", frameon=False, fontsize=17, handlelength=2.2, labelspacing=0.35, ncol=2,
-                   columnspacing=1.0)
+    ax_time.legend(loc="lower left", frameon=False, fontsize=16, handlelength=1.8, handletextpad=0.5,
+                   labelspacing=0.35, ncol=2, columnspacing=0.8)  # narrow enough to stay inside the axes
 
     ax_samples.set_xscale("log")
     ax_samples.set_xticks(SAMPLE_SIZES)

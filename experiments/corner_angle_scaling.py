@@ -13,9 +13,13 @@ the samples, and the error is its exact Hausdorff distance to the reachable set.
                    N = 10^4
 
 Every condition has 200 trials.  The theory curves are the upper bound for
-standard and convex sets and the minimax lower bound for spikes, both solved
-for r, and the mean of the distance from the apex to the cloud, whose law is
-P(d > r) = (1 - kappa (e^{-mu T} r / R)^2)^N.
+standard and convex sets and the pointwise apex obstruction for the plotted
+triangle, both solved for r.  For a triangle whose error is governed by its
+apex, P(d_* > r) = (1 - kappa (e^{-mu T} r / R)^2)^N, so the 95% quantile of
+d_* is an instance-level lower bound; the minimax bound of Theorem 2 is a
+worst-case statement over instances and is not plotted as a lower bound for
+each shape.  The angle panel shows apex angles down to ANGLE_PLOT_MIN_DEG
+(kappa >= 1/96); the thinner triangles of the sweep enter only the slope fit.
 
     python -m experiments.corner_angle_scaling              # run + plot
     python -m experiments.corner_angle_scaling --plot-only  # plot from CSV
@@ -31,7 +35,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from shapely.geometry import Polygon
 
-from reachapprox.bounds import certified_accuracy, lower_bound_accuracy
+from reachapprox.bounds import certified_accuracy
 from reachapprox.flows import spiral_flow
 from reachapprox.geometry import (
     CENTER,
@@ -69,6 +73,7 @@ COMMON_R = 1.0
 SAMPLE_SIZES = (30, 100, 300, 1_000, 3_000, 10_000, 30_000, 100_000)
 ANGLE_SWEEP_SAMPLE_SIZE = 10_000
 ANGLE_SWEEP_DEG = tuple(60.0 * 2.0 ** (-k / 2.0) for k in range(13))
+ANGLE_PLOT_MIN_DEG = 3.75  # smallest apex angle in the figure (kappa = 1/96)
 N_TRIALS = 200
 RANDOM_SEED = 23
 BOUNDARY_SPACING = 2e-4
@@ -163,6 +168,18 @@ def theory_parameters(kind: str, angle_deg: float) -> dict:
             "convex": True, "rho": RHO, "delta": DELTA}
 
 
+def pointwise_apex_quantile(kappa, sample_size: int, delta: float = DELTA) -> np.ndarray:
+    """(1-delta) quantile of d_* from P(d_* > s) = (1 - kappa (e^{-mu T} s / R)^n)^N.
+
+    This is an instance-level lower bound on the Hausdorff error of the
+    endpoint cloud for any shape whose smallest local-volume corner is the
+    apex; unlike the minimax bound, it applies to the plotted triangle itself.
+    """
+    kappa = np.asarray(kappa, dtype=float)
+    return np.exp(RATE * HORIZON) * COMMON_R * (1.0 - delta ** (1.0 / sample_size)) ** (1.0 / N_DIM) / kappa ** (
+        1.0 / N_DIM)
+
+
 def flow(points: np.ndarray) -> np.ndarray:
     return spiral_flow(points, HORIZON, RATE, OMEGA)
 
@@ -237,11 +254,6 @@ def fit_slopes(stats: dict) -> list[dict]:
     return fits
 
 
-def apex_distance_mean(kappa, sample_size) -> np.ndarray:
-    """E d(phi_T(apex), cloud) ~ e^{mu T} R Gamma(3/2) / sqrt(kappa N), from the law in the module docstring."""
-    return np.exp(RATE * HORIZON) * COMMON_R * np.sqrt(np.pi / (4.0 * np.asarray(kappa) * sample_size))
-
-
 def draw_sets(ax) -> None:
     """Outlines of the initial sets, each with the marker of its curve in the error panels."""
     for key, (x0, y0) in SET_LANES.items():
@@ -299,25 +311,21 @@ def plot_figure(stats: dict) -> None:
     ax_samples.set_title(rf"Error vs. samples ($T={HORIZON:g}$)")
     ax_samples.legend(loc="upper right", frameon=False, fontsize=19, handlelength=2.4, labelspacing=0.4)
 
-    angles = np.asarray(ANGLE_SWEEP_DEG)
+    angles = np.asarray([a for a in ANGLE_SWEEP_DEG if a >= ANGLE_PLOT_MIN_DEG])
     kappas = angles / 360.0
     sweep = {c: np.array([stats[("angle", "triangle", round(a, 6), ANGLE_SWEEP_SAMPLE_SIZE)][c] for a in angles])
-             for c in ("mean", "q05", "q95", "corner_mean")}
+             for c in ("mean", "q05", "q95")}
     dense_kappa = np.geomspace(kappas.min() / 1.15, kappas.max() * 1.15, 200)
     upper = np.array([certified_accuracy(ANGLE_SWEEP_SAMPLE_SIZE, HORIZON, **theory_parameters("triangle", a))
                       for a in angles])
-    lower = lower_bound_accuracy(ANGLE_SWEEP_SAMPLE_SIZE, HORIZON, n=N_DIM, mu=RATE, R=COMMON_R, rho=RHO,
-                                 delta=DELTA, kappa=dense_kappa)
+    pointwise = pointwise_apex_quantile(dense_kappa, ANGLE_SWEEP_SAMPLE_SIZE)
     color = TRIANGLE_RAMP[30.0]
     ax_angle.errorbar(kappas, sweep["mean"], yerr=(sweep["mean"] - sweep["q05"], sweep["q95"] - sweep["mean"]),
                       color=color, marker="^", markersize=10, markeredgecolor="white", markeredgewidth=1.2,
                       linewidth=2.2, capsize=4, label=r"$d_H$: mean, 5-95% range")
-    ax_angle.plot(kappas, sweep["corner_mean"], color=color, marker="o", markersize=8.5, markerfacecolor="white",
-                  markeredgewidth=1.8, linestyle="none", label="apex-to-cloud distance: mean")
-    ax_angle.plot(dense_kappa, apex_distance_mean(dense_kappa, ANGLE_SWEEP_SAMPLE_SIZE), color=MUTED,
-                  linewidth=1.6, label=r"apex law, $\propto\kappa^{-1/2}$")
     ax_angle.plot(kappas, upper, color=INK, linestyle="-.", linewidth=2.4, label="upper bound")
-    ax_angle.plot(dense_kappa, lower, color=INK, linestyle="--", linewidth=2.2, label="minimax lower bound (spike)")
+    ax_angle.plot(dense_kappa, pointwise, color=INK, linestyle="--", linewidth=2.4,
+                  label="pointwise apex bound (95%)")
     ax_angle.set_xscale("log")
     ax_angle.set_xticks(kappas[::2])
     ax_angle.set_xticklabels([rf"$\frac{{1}}{{{360.0 / a:.0f}}}$" for a in angles[::2]])
@@ -331,9 +339,8 @@ def plot_figure(stats: dict) -> None:
     ax_angle.set_xlabel(r"local volume density $\kappa=\theta/(2\pi)$")
     ax_angle.set_title(rf"Error vs. apex angle $\theta$ ($N=10^{{{int(np.log10(ANGLE_SWEEP_SAMPLE_SIZE))}}}$)", pad=40)
     handles, labels = ax_angle.get_legend_handles_labels()
-    order = [labels.index(label) for label in (r"$d_H$: mean, 5-95% range", "apex-to-cloud distance: mean",
-                                                r"apex law, $\propto\kappa^{-1/2}$", "upper bound",
-                                                "minimax lower bound (spike)")]
+    order = [labels.index(label) for label in (r"$d_H$: mean, 5-95% range", "upper bound",
+                                                "pointwise apex bound (95%)")]
     ax_angle.legend([handles[i] for i in order], [labels[i] for i in order], loc="upper right", frameon=False,
                     fontsize=17, handlelength=2.2, labelspacing=0.35)
 
@@ -346,7 +353,7 @@ def plot_figure(stats: dict) -> None:
         ax.tick_params(axis="y", which="minor", labelsize=14)
         ax.grid(True, which="major", color=GRID, linewidth=1.0)
         ax.set_axisbelow(True)
-    ax_angle.set_ylim(top=ax_angle.get_ylim()[1] * 3.0)  # room for the legend
+    ax_angle.set_ylim(top=ax_angle.get_ylim()[1] * 2.0)  # room for the legend
     for ax in (ax_sets, ax_samples, ax_angle):
         ax.title.set_size(26)
     fig.savefig(FIGURE_PATH, dpi=220, bbox_inches="tight", pad_inches=0.12)

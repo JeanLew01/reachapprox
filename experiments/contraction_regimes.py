@@ -134,7 +134,8 @@ def summarize(times: dict[str, np.ndarray]) -> list[dict]:
     for name, values in times.items():
         parameters = theory_parameters(name)
         upper = required_samples(ACCURACY, horizons, **parameters)
-        lower = lower_bound_samples(ACCURACY, horizons, n=N_DIM, mu=RATE, R=COMMON_R, rho=RHO, delta=DELTA)
+        lower = lower_bound_samples(ACCURACY, horizons, n=N_DIM, mu=RATE, R=COMMON_R, kappa=parameters["kappa"],
+                                    rho=RHO, delta=DELTA)
         quantile = np.quantile(values, 1.0 - DELTA, axis=0, method="higher")
         for index, T in enumerate(HORIZONS):
             summary.append({"set": name, "T": T, "preimage_accuracy": ACCURACY * np.exp(-RATE * T),
@@ -190,7 +191,8 @@ def plot_figure(summary: list[dict]) -> None:
                 linestyle="--", linewidth=2.0)
         ax.plot(horizons, empirical, color=style["color"], marker=style["marker"], markersize=10,
                 markeredgecolor="white", markeredgewidth=1.2, linewidth=2.2, label=style["label"])
-    lower = lower_bound_samples(ACCURACY, dense, n=N_DIM, mu=RATE, R=COMMON_R, rho=RHO, delta=DELTA)
+    kappa = {theory_parameters(name)["kappa"] for name in STYLES}.pop()  # both sets have kappa = 1/4
+    lower = lower_bound_samples(ACCURACY, dense, n=N_DIM, mu=RATE, R=COMMON_R, kappa=kappa, rho=RHO, delta=DELTA)
     ax.plot(dense, lower, color=INK, linestyle="-.", linewidth=2.2, label="minimax lower bound")
     ax.plot([], [], color=INK, linestyle="--", linewidth=2.0, label="upper bound (same color)")
     guide = np.array([1.5, 2.6])

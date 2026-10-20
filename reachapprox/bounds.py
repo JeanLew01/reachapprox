@@ -25,9 +25,9 @@ def circular_cone_fraction(n: int, half_angle: float) -> float:
     return float((n - 1) * unit_ball_volume(n - 1) / (n * unit_ball_volume(n)) * cap)
 
 
-def spike_fraction(n: int) -> float:
-    """kappa_n = vartheta_n(arctan(1/2)), the largest kappa covered by the spike lower bound."""
-    return circular_cone_fraction(n, float(np.arctan(0.5)))
+def lower_bound_kappa_max(n: int) -> float:
+    """kappa_n = vartheta_n(pi/4), the largest kappa covered by the minimax lower bound; kappa_n >= 2^-n."""
+    return circular_cone_fraction(n, np.pi / 4.0)
 
 
 def upper_bound_samples(r, T, *, n: int, mu: float, R: float, kappa: float, lam: float,
@@ -73,29 +73,28 @@ def certified_accuracy(N, T: float, *, resolution: int = 4000, **parameters):
     return accuracy if np.ndim(N) else float(accuracy[0])
 
 
-def lower_bound_accuracy(N, T, *, n: int, mu: float, R: float, rho: float = 1.0, delta: float = 0.05,
-                         kappa=None):
+def lower_bound_accuracy(N, T, *, n: int, mu: float, R: float, kappa, rho: float = 1.0, delta: float = 0.05):
     """Minimax lower bound solved for r: with N samples no estimator achieves a smaller r on the family.
 
-    Punctured balls if kappa is None, a ball with a spike of solid-angle
-    fraction kappa otherwise.  NaN outside the admissible range
-    r < e^{mu T} R / 16 (and kappa <= kappa_n for the spike).
+    The hard instances share a body with two corners of local volume density kappa and differ in which corner is
+    cut off by a ball of radius about 2 r e^{-mu T}, so
+    N_lb = (e^{mu T} R / (2 r))^n log(1 / (2 delta)) / (2 rho kappa).
+    NaN outside the admissible range r < e^{mu T} R / 16 and kappa <= kappa_n.
     """
     N = np.asarray(N, dtype=float)
+    kappa = np.asarray(kappa, dtype=float)
     scale = np.exp(mu * np.asarray(T, dtype=float)) * R
-    log_term = np.log(1.0 / (2.0 * delta))
-    if kappa is None:
-        r = scale / 2.0 * (log_term / (2.0 * rho * N)) ** (1.0 / n)
-        valid = r < scale / 16.0
-    else:
-        kappa = np.asarray(kappa, dtype=float)
-        r = scale * 5.0 / 12.0 * (log_term / (2.0 * rho * kappa * N)) ** (1.0 / n)
-        valid = (r < scale / 16.0) & (kappa <= spike_fraction(n))
-    return np.where(valid, r, np.nan)
+    r = scale / 2.0 * (np.log(1.0 / (2.0 * delta)) / (2.0 * rho * kappa * N)) ** (1.0 / n)
+    return np.where(_admissible(r, scale, kappa, n), r, np.nan)
 
 
-def lower_bound_samples(r, T, *, n: int, mu: float, R: float, rho: float = 1.0, delta: float = 0.05):
-    """Minimax lower bound (punctured balls): with fewer samples every estimator fails on some instance."""
+def lower_bound_samples(r, T, *, n: int, mu: float, R: float, kappa, rho: float = 1.0, delta: float = 0.05):
+    """Minimax lower bound: with fewer samples every estimator fails on some instance of the family."""
+    kappa = np.asarray(kappa, dtype=float)
     scale = np.exp(mu * np.asarray(T, dtype=float)) * R
-    needed = (scale / r) ** n / (2.0 ** (n + 1) * rho) * np.log(1.0 / (2.0 * delta))
-    return np.where(r < scale / 16.0, needed, np.nan)
+    needed = (scale / (2.0 * r)) ** n * np.log(1.0 / (2.0 * delta)) / (2.0 * rho * kappa)
+    return np.where(_admissible(r, scale, kappa, n), needed, np.nan)
+
+
+def _admissible(r, scale, kappa, n: int):
+    return (r < scale / 16.0) & (kappa <= lower_bound_kappa_max(n) * (1.0 + 1e-9))

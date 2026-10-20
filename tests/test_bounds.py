@@ -5,9 +5,9 @@ from reachapprox.bounds import (
     circular_cone_fraction,
     convex_upper_bound_samples,
     lower_bound_accuracy,
+    lower_bound_kappa_max,
     lower_bound_samples,
     required_samples,
-    spike_fraction,
     upper_bound_samples,
 )
 
@@ -19,7 +19,8 @@ def test_circular_cone_fractions() -> None:
     assert np.isclose(circular_cone_fraction(2, 0.4), 0.4 / np.pi)
     assert np.isclose(circular_cone_fraction(3, 0.7), (1.0 - np.cos(0.7)) / 2.0)
     assert np.allclose([circular_cone_fraction(n, np.pi / 2.0) for n in (2, 3, 4, 5)], 0.5)
-    assert np.allclose([spike_fraction(n) for n in (2, 3, 4)], [0.148, 0.053, 0.020], atol=5e-4)
+    assert np.allclose([lower_bound_kappa_max(n) for n in (2, 3, 4)], [0.25, 0.146, 0.091], atol=5e-4)
+    assert all(lower_bound_kappa_max(n) >= 2.0**-n for n in range(2, 40))
 
 
 def test_upper_bound_for_the_equilateral_triangle() -> None:
@@ -57,9 +58,10 @@ def test_certified_accuracy_inverts_the_bound() -> None:
 
 
 def test_lower_bounds_and_their_admissible_range() -> None:
-    r = lower_bound_accuracy(1e4, 0.5, n=2, mu=-1.0, R=1.0)
-    assert np.isclose(lower_bound_samples(r, 0.5, n=2, mu=-1.0, R=1.0), 1e4)
-    assert np.isnan(lower_bound_accuracy(10.0, 0.0, n=2, mu=0.0, R=1.0))
-    spike = lower_bound_accuracy(1e4, 0.0, n=2, mu=0.0, R=1.0, kappa=np.array([1.0 / 6.0, 1.0 / 24.0]))
-    assert np.isnan(spike[0])
-    assert np.isclose(spike[1], 5.0 / 12.0 * np.sqrt(np.log(10.0) * 24.0 / 2e4))
+    r = lower_bound_accuracy(1e4, 0.5, n=2, mu=-1.0, R=1.0, kappa=0.25)
+    assert np.isclose(lower_bound_samples(r, 0.5, n=2, mu=-1.0, R=1.0, kappa=0.25), 1e4)
+    assert np.isnan(lower_bound_accuracy(10.0, 0.0, n=2, mu=0.0, R=1.0, kappa=0.25))  # r beyond e^{mu T} R / 16
+    kappas = np.array([0.3, 0.25, 1.0 / 6.0, 1.0 / 24.0])
+    bound = lower_bound_accuracy(1e4, 0.0, n=2, mu=0.0, R=1.0, kappa=kappas)
+    assert np.isnan(bound[0])  # kappa > kappa_2 = 1/4
+    assert np.allclose(bound[1:], 0.5 * np.sqrt(np.log(10.0) / (2e4 * kappas[1:])))
