@@ -13,12 +13,10 @@ the samples, and the error is its exact Hausdorff distance to the reachable set.
                    N = 10^4
 
 Every condition has 200 trials.  The theory curves are the upper bound for
-standard and convex sets and the pointwise apex obstruction for the plotted
-triangle, both solved for r.  For a triangle whose error is governed by its
-apex, P(d_* > r) = (1 - kappa (e^{-mu T} r / R)^2)^N, so the 95% quantile of
-d_* is an instance-level lower bound; the minimax bound of Theorem 2 is a
-worst-case statement over instances and is not plotted as a lower bound for
-each shape.  The angle panel shows apex angles down to ANGLE_PLOT_MIN_DEG
+standard and convex sets and the minimax lower bound of Theorem 2, both
+solved for r at delta = 0.05.  The lower curve concerns the family with
+standardness scale lambda <= 3 R / 32; it is not a pointwise lower bound for
+each triangle.  The angle panel shows apex angles down to ANGLE_PLOT_MIN_DEG
 (kappa >= 1/96); the thinner triangles of the sweep enter only the slope fit.
 
     python -m experiments.corner_angle_scaling              # run + plot
@@ -35,7 +33,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from shapely.geometry import Polygon
 
-from reachapprox.bounds import certified_accuracy
+from reachapprox.bounds import certified_accuracy, lower_bound_accuracy
 from reachapprox.flows import spiral_flow
 from reachapprox.geometry import (
     CENTER,
@@ -166,18 +164,6 @@ def theory_parameters(kind: str, angle_deg: float) -> dict:
         diameter = float(np.max(np.linalg.norm(vertices[:, None, :] - vertices[None, :, :], axis=2)))
     return {"n": N_DIM, "mu": RATE, "R": COMMON_R, "kappa": kappa, "lam": lam, "diameter": diameter,
             "convex": True, "rho": RHO, "delta": DELTA}
-
-
-def pointwise_apex_quantile(kappa, sample_size: int, delta: float = DELTA) -> np.ndarray:
-    """(1-delta) quantile of d_* from P(d_* > s) = (1 - kappa (e^{-mu T} s / R)^n)^N.
-
-    This is an instance-level lower bound on the Hausdorff error of the
-    endpoint cloud for any shape whose smallest local-volume corner is the
-    apex; unlike the minimax bound, it applies to the plotted triangle itself.
-    """
-    kappa = np.asarray(kappa, dtype=float)
-    return np.exp(RATE * HORIZON) * COMMON_R * (1.0 - delta ** (1.0 / sample_size)) ** (1.0 / N_DIM) / kappa ** (
-        1.0 / N_DIM)
 
 
 def flow(points: np.ndarray) -> np.ndarray:
@@ -318,14 +304,15 @@ def plot_figure(stats: dict) -> None:
     dense_kappa = np.geomspace(kappas.min() / 1.15, kappas.max() * 1.15, 200)
     upper = np.array([certified_accuracy(ANGLE_SWEEP_SAMPLE_SIZE, HORIZON, **theory_parameters("triangle", a))
                       for a in angles])
-    pointwise = pointwise_apex_quantile(dense_kappa, ANGLE_SWEEP_SAMPLE_SIZE)
+    lower = lower_bound_accuracy(ANGLE_SWEEP_SAMPLE_SIZE, HORIZON, n=N_DIM, mu=RATE,
+                                 R=COMMON_R, kappa=dense_kappa, rho=RHO, delta=DELTA)
     color = TRIANGLE_RAMP[30.0]
     ax_angle.errorbar(kappas, sweep["mean"], yerr=(sweep["mean"] - sweep["q05"], sweep["q95"] - sweep["mean"]),
                       color=color, marker="^", markersize=10, markeredgecolor="white", markeredgewidth=1.2,
                       linewidth=2.2, capsize=4, label=r"$d_H$: mean, 5-95% range")
     ax_angle.plot(kappas, upper, color=INK, linestyle="-.", linewidth=2.4, label="upper bound")
-    ax_angle.plot(dense_kappa, pointwise, color=INK, linestyle="--", linewidth=2.4,
-                  label="pointwise apex bound (95%)")
+    ax_angle.plot(dense_kappa, lower, color=INK, linestyle="--", linewidth=2.4,
+                  label="minimax lower bound")
     ax_angle.set_xscale("log")
     ax_angle.set_xticks(kappas[::2])
     ax_angle.set_xticklabels([rf"$\frac{{1}}{{{360.0 / a:.0f}}}$" for a in angles[::2]])
@@ -340,7 +327,7 @@ def plot_figure(stats: dict) -> None:
     ax_angle.set_title(rf"Error vs. apex angle $\theta$ ($N=10^{{{int(np.log10(ANGLE_SWEEP_SAMPLE_SIZE))}}}$)", pad=40)
     handles, labels = ax_angle.get_legend_handles_labels()
     order = [labels.index(label) for label in (r"$d_H$: mean, 5-95% range", "upper bound",
-                                                "pointwise apex bound (95%)")]
+                                                "minimax lower bound")]
     ax_angle.legend([handles[i] for i in order], [labels[i] for i in order], loc="upper right", frameon=False,
                     fontsize=17, handlelength=2.2, labelspacing=0.35)
 

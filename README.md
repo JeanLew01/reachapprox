@@ -105,9 +105,10 @@ square, isosceles triangles of apex angle $\theta$ ($\kappa = \theta/2\pi$), and
   the logarithm), with or without corners.  The cusp, which is not standard, decays with slope $-0.34$
   ($N^{-1/3}$).
 * **Constant.** For thin corners the error is the distance from the apex to the cloud, whose law
-  $\Pr(d > s) = (1 - \kappa (e^{-\mu T}s/R)^2)^N$ is exact, and it grows like $\kappa^{-1/2}$ (fitted
+  $\Pr(d > s) = (1 - \kappa (e^{-\mu T}s/R)^2)^N$ holds within the local cone, and it grows like $\kappa^{-1/2}$ (fitted
   exponent $-0.49$).  The 95% quantile stays a factor 3–5 below the upper bound and a factor 3–4 above
-  the lower bound, with the same slope in $\kappa$.
+  the minimax lower curve, with the same slope in $\kappa$. The curve is the family-level bound of Theorem 2,
+  solved for accuracy at $\delta=0.05$ and a standardness scale $\lambda\le3R/32$.
 
 ### The horizon enters through $\mu$, not through $L$
 
