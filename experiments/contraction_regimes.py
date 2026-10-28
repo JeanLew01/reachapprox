@@ -13,6 +13,10 @@ between the reachable set and the first N endpoints is at most r.  The flow is
 a similarity, phi_T = e^{-T} Rot(4T), so that distance is e^{-T} times the
 distance between the initial set and the first N initial states; one error
 curve per trial therefore gives the hitting times for every horizon.
+The plotted steps and sample_complexity_dense.csv use a horizon grid of
+0.005; the markers and sample_complexity.csv retain the 0.25 grid. Both
+summaries and the figure can be reproduced from trials.csv without rerunning
+the sampling experiment.
 
 The theory curves are the upper bound in its three regimes (fine accuracy,
 saturation at the regularity scale lambda, one sample once r >= diam(S_T)),
@@ -52,6 +56,11 @@ ACCURACY = 0.03
 ARRAY_PER_SIDE = 3
 ARRAY_PITCH_RATIO = 8.0
 HORIZONS = tuple(float(t) for t in np.arange(0.0, 6.76, 0.25))
+# N(T) is a step function: use the dense grid for the curve and its CSV,
+# and HORIZONS for the markers and the original coarse summary CSV.
+FINE_HORIZON_STEP = 0.005
+FINE_HORIZONS = tuple(float(t) for t in np.round(
+    np.arange(HORIZONS[0], HORIZONS[-1] + FINE_HORIZON_STEP / 2, FINE_HORIZON_STEP), 6))
 N_TRIALS = 200
 RANDOM_SEED = 47
 MAX_SAMPLES = 2**17
@@ -61,6 +70,7 @@ BOUNDARY_SPACING = 5e-4
 OUT_DIR = RESULTS_DIR / "contraction_regimes"
 TRIALS_CSV = OUT_DIR / "trials.csv"
 SUMMARY_CSV = OUT_DIR / "sample_complexity.csv"
+DENSE_SUMMARY_CSV = OUT_DIR / "sample_complexity_dense.csv"
 FIGURE_PATH = OUT_DIR / "contraction_regimes.png"
 
 INK = "#0b0b0b"
@@ -113,12 +123,12 @@ def run_experiment(workers: int | None) -> list[dict]:
     return rows
 
 
-def hitting_times(rows: list[dict]) -> dict[str, np.ndarray]:
+def hitting_times(rows: list[dict], horizons=HORIZONS) -> dict[str, np.ndarray]:
     """set -> array (trial, horizon) of the first N with e^{mu T} d_H(S_0, X_{1:N}) <= accuracy (inf if none)."""
     curves: dict[tuple[str, int], list[tuple[int, float]]] = {}
     for row in rows:
         curves.setdefault((row["set"], int(row["trial"])), []).append((int(row["N"]), float(row["initial_error"])))
-    thresholds = ACCURACY * np.exp(-RATE * np.asarray(HORIZONS))
+    thresholds = ACCURACY * np.exp(-RATE * np.asarray(horizons))
     times: dict[str, list[np.ndarray]] = {}
     for (name, _), curve in sorted(curves.items()):
         sizes, errors = np.array(sorted(curve)).T
@@ -128,8 +138,8 @@ def hitting_times(rows: list[dict]) -> dict[str, np.ndarray]:
     return {name: np.vstack(values) for name, values in times.items()}
 
 
-def summarize(times: dict[str, np.ndarray]) -> list[dict]:
-    horizons = np.asarray(HORIZONS)
+def summarize(times: dict[str, np.ndarray], horizons=HORIZONS) -> list[dict]:
+    horizons = np.asarray(horizons)
     summary = []
     for name, values in times.items():
         parameters = theory_parameters(name)
@@ -137,7 +147,7 @@ def summarize(times: dict[str, np.ndarray]) -> list[dict]:
         lower = lower_bound_samples(ACCURACY, horizons, n=N_DIM, mu=RATE, R=COMMON_R, kappa=parameters["kappa"],
                                     rho=RHO, delta=DELTA)
         quantile = np.quantile(values, 1.0 - DELTA, axis=0, method="higher")
-        for index, T in enumerate(HORIZONS):
+        for index, T in enumerate(horizons):
             summary.append({"set": name, "T": T, "preimage_accuracy": ACCURACY * np.exp(-RATE * T),
                             "N_empirical": quantile[index], "N_median": np.median(values[:, index]),
                             "N_upper_bound": upper[index], "N_lower_bound": lower[index]})
@@ -178,7 +188,7 @@ def draw_sets(ax) -> None:
     ax.set_title("Initial sets and\n" r"preimage accuracy $re^{-\mu T}$", linespacing=1.15)
 
 
-def plot_figure(summary: list[dict]) -> None:
+def plot_figure(summary: list[dict], fine_times: dict[str, np.ndarray]) -> None:
     fig, (ax_sets, ax) = plt.subplots(1, 2, figsize=(23.5, 7.4), gridspec_kw={"width_ratios": (0.62, 2.0),
                                                                              "wspace": 0.10})
     draw_sets(ax_sets)
@@ -189,11 +199,17 @@ def plot_figure(summary: list[dict]) -> None:
         empirical = np.array([row["N_empirical"] for row in summary if row["set"] == name], dtype=float)
         ax.plot(dense, required_samples(ACCURACY, dense, **theory_parameters(name)), color=style["color"],
                 linestyle="--", linewidth=2.0)
+        steps = np.quantile(fine_times[name], 1.0 - DELTA, axis=0, method="higher")
+        ax.plot(FINE_HORIZONS, steps, color=style["color"], linewidth=2.2, drawstyle="steps-post")
         ax.plot(horizons, empirical, color=style["color"], marker=style["marker"], markersize=10,
-                markeredgecolor="white", markeredgewidth=1.2, linewidth=2.2, label=style["label"])
+                markeredgecolor="white", markeredgewidth=1.2, linestyle="none")
+        ax.plot([], [], color=style["color"], marker=style["marker"], markersize=10, markeredgecolor="white",
+                markeredgewidth=1.2, linewidth=2.2, label=style["label"])
     kappa = {theory_parameters(name)["kappa"] for name in STYLES}.pop()  # both sets have kappa = 1/4
     lower = lower_bound_samples(ACCURACY, dense, n=N_DIM, mu=RATE, R=COMMON_R, kappa=kappa, rho=RHO, delta=DELTA)
-    ax.plot(dense, lower, color=INK, linestyle="-.", linewidth=2.2, label="minimax lower bound")
+    valid_until = dense[np.isfinite(lower)].max()
+    ax.plot(dense, lower, color=INK, linestyle="-.", linewidth=2.2,
+            label=rf"minimax lower bound (valid for $T<{valid_until:.2f}$)")
     ax.plot([], [], color=INK, linestyle="--", linewidth=2.0, label="upper bound (same color)")
     guide = np.array([1.5, 2.6])
     ax.plot(guide, 25.0 * np.exp(N_DIM * RATE * (guide - guide[0])), color=MUTED, linewidth=1.6)
@@ -241,13 +257,21 @@ def main() -> None:
         print(f"saved {TRIALS_CSV}")
     summary = summarize(hitting_times(rows))
     write_csv(summary, SUMMARY_CSV)
+    fine_times = hitting_times(rows, FINE_HORIZONS)
+    fine_summary = summarize(fine_times, FINE_HORIZONS)
+    write_csv(fine_summary, DENSE_SUMMARY_CSV)
+    print(f"saved {DENSE_SUMMARY_CSV} (horizon step {FINE_HORIZON_STEP:g})")
     for name in STYLES:
         saturation, trivial = regime_boundaries(name)
         print(f"{name}: bound saturates at T={saturation:.2f} and is trivial from T={trivial:.2f}")
+        single_sample = next((row["T"] for row in fine_summary
+                              if row["set"] == name and row["N_empirical"] == 1), None)
+        if single_sample is not None:
+            print(f"  first empirical single-sample horizon on the dense grid: T={single_sample:.3f}")
         for row in summary:
             if row["set"] == name and row["T"] in (0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0):
                 print(f"  T={row['T']:.2f}: empirical N={row['N_empirical']:.0f}, upper bound {row['N_upper_bound']:.0f}")
-    plot_figure(summary)
+    plot_figure(summary, fine_times)
     print(f"saved {FIGURE_PATH}")
 
 

@@ -81,9 +81,17 @@ The extended analysis relaxes two of the three conditions above, and the bounds 
 | | Sample complexity |
 |---|---|
 | **Upper bound** (any estimator containing the samples) | $N \ge \dfrac{1}{\rho\kappa}\Big(\dfrac{R}{\varrho}\Big)^n\Big[\log\dfrac{2^nR^n}{\kappa\varrho^n} + \log\dfrac1\delta\Big]$ with $\varrho = \min\{\tfrac12 e^{-\mu T} r,\ \lambda\}$; one sample if $r \ge e^{\mu T}\,\mathrm{diam}(S_0)$ |
-| **Minimax lower bound** ($\kappa \le \kappa_n$, e.g. $\kappa_2 \approx 0.148$) | $N < \dfrac{1}{2\rho\kappa}\Big(\dfrac{5 e^{\mu T}R}{12\, r}\Big)^n\log\dfrac{1}{2\delta}$ |
+| **Minimax lower bound** ($n\ge2$, $\kappa \le \kappa_n$, e.g. $\kappa_2 = 1/4$) | $N < \dfrac{1}{2\rho\kappa}\Big(\dfrac{e^{\mu T}R}{2r}\Big)^n\log\dfrac{1}{2\delta}$ |
 
-For $r \le 2e^{\mu T}\lambda$ the two match in $e^{n\mu T}(R/r)^n/(\rho\kappa)$: contraction provably reduces
+The TAC lower bound assumes $0<r<e^{\mu T}R/16$, $0<\lambda\le3R/32$,
+$0<\delta<1/2$, and a state domain that accommodates the hard instances and
+all their trajectories. A sufficient condition is
+$\overline B_{3R\max\{1,e^{\mu T}\}}(c)\subseteq\mathcal X$ for some center $c$;
+the construction then uses $F(x)=\mu(x-c)$ on that same domain. The plotted
+planar families can be taken on $\mathbb R^2$.
+
+Under these restrictions and $r \le 2e^{\mu T}\lambda$, the two match in
+$e^{n\mu T}(R/r)^n/(\rho\kappa)$ up to dimension-dependent constants and logarithmic factors: contraction provably reduces
 the sampling burden, and neither $1/\rho$ nor the corner factor $1/\kappa$ can be removed.  The bounds are
 implemented in `reachapprox/bounds.py`.
 
@@ -144,8 +152,10 @@ for a convex square and for nine distant squares of the same total area.
   array must still be hit: the empirical complexity stays at 45 for $T \in [3.25, 5]$ (the 95% quantile of
   the coupon-collector time for nine pieces is 44), and the bound stays at 376.  The convex square keeps
   improving.
-* **Trivial accuracy.** One sample suffices once $r \ge \mathrm{diam}(S_T)$: from $T = 4.5$ for the square
-  (bound: $4.43$) and from $T = 6.25$ for the array (bound: $6.16$).
+* **Trivial accuracy.** The empirical 95% quantile becomes one sample at $T = 4.33$ for the square
+  and $T = 6.15$ for the array, evaluated on the saved trial curves with a horizon grid of step $0.005$.
+  The deterministic condition $r \ge \mathrm{diam}(S_T)$ guarantees one sample from $T = 4.43$
+  and $T = 6.16$, respectively (rounded horizons).
 
 
 ## Experiments
@@ -182,12 +192,32 @@ Each experiment is one script in `experiments/`.  Its per-trial results are save
   * *Sampling:* uniform, or Algorithm 1 with $n_{\rm adv} = 1$ and $\eta = 0.05$.
   * *Estimator and error:* the convex hull of the endpoints, and the directed Hausdorff distance from
     2,000 of 20,000 reference endpoints to it; $N \in \{1, \dots, 3000\}$, 30 seeds.
+  * *Slope uncertainty:* approximate percentile intervals from 2,000 bootstrap replicates that preserve shared random streams across
+    budgets. Adversarial rows are aligned by `seed - N` and whole records are resampled jointly.
+    Uniform rows are clustered by their actual `seed`: the saved seeding formula reuses some
+    seeds at different budgets, sharing the reference subset and overlapping sampling random streams.
+    Each uniform replicate resamples these seed clusters and computes each budget mean from its
+    available records. There are 30 observations per budget and 179 unique uniform streams per
+    dimension. These intervals are conditional on the fixed 20,000-point master reference cloud
+    (seed `202606 + n`); they do not measure variation between independent master clouds.
+  * *Numerical projection:* the hull metric uses normalized nonnegative least squares with
+    equality-penalty weight 1,000 and a $10^{-8}$ zero threshold. It approximates the Euclidean
+    projection. A supporting-plane dual bound and the feasible candidate distance were checked
+    on 15 reconstructed cases in dimensions 4, 6, and 8, including uniform budgets up to 3,000.
+    Across 480 queries the largest numerical absolute error bound was $8.12\times10^{-9}$;
+    the largest relative bound on each subset's directed error was $2.56\times10^{-8}$.
+    These floating-point checks cover representative inputs, not every original trial or the
+    finite-reference/integration error; see
+    [the projection validation record](results/robotarm_projection_validation/VALIDATION.txt).
   * *Slope fit:* `robotarm_slope_fit` fits the inverse-rate exponent linearly in the state dimension, $1/|{\rm slope}(d)| \approx a d + c$.
   * *Summary figure:* `robotarm_scaling_summary` re-plots both in one figure labeled by the state dimension.
 * **Robot-arm time sweep** (`robotarm_time_sweep`)
   * *Setting:* the same arms with uniform sampling and $N = 1000$.
   * *Sweep:* $T \in [0.01, 2]$ (11 values), with a 5,000-point reference cloud and 5 seeds.
-  * *Error:* directed Hausdorff distance from 1,000 of the reference endpoints to the samples.
+  * *Error:* directed Hausdorff distance from 1,000 of the reference endpoints to the endpoint
+    cloud, rather than its convex hull. This separate five-seed sweep gives approximately 9.4%,
+    21.6%, and 20.6% mean-error growth over the horizon range for state dimensions 4, 6, and 8.
+    Its metric and trial count differ from the dimension-scaling experiment.
 * **Adversarial sampling intensity** (`adversarial_intensity`)
   * *System:* $\dot x = x^2,\ \dot y = 0$ with the circle, opened triangle and triangle.
   * *Sampling:* $N \in \{10, 100, 1000\}$ endpoints from Algorithm 1 with $n_{\rm adv} \in \{0, \dots, 4\}$
@@ -214,7 +244,10 @@ Each experiment is one script in `experiments/`.  Its per-trial results are save
   * *Initial sets:* area $\pi$: a square, and nine squares of side $0.59$ on a lattice of pitch $4.73$.
   * *Sample complexity:* for $r = 0.03$, the 95% quantile over 200 trials of the first $N$ with
     $d_H(S_T, \{Y_1, \dots, Y_N\}) \le r$.  The flow is a similarity, so one error curve per trial, evaluated
-    on a grid of $N$ with ratio $2^{1/8}$, gives this hitting time for every horizon.
+    on all integer budgets through 64 and then a grid with ratio $2^{1/8}$, gives this hitting time
+    for every horizon. Solid steps use a $0.005$ horizon grid from 0 to 6.75; markers and
+    `sample_complexity.csv` use $0.25$. `sample_complexity_dense.csv` archives all dense-grid
+    quantiles and theory values without rerunning the simulations.
 
 
 ## Installation
@@ -230,6 +263,12 @@ CSVs and all planar experiments need only NumPy, SciPy, Matplotlib and Shapely.
 
 ## Reproduce
 
+The TAC revision records its baseline code commit and exact plotting-source/data hashes in
+[the contraction and OSL reproduction record](results/contraction_regimes/reproduction_20261028.txt)
+and the bootstrap settings, unchanged estimates, and regenerated robot-arm figure in
+[the bootstrap revision record](results/robotarm_dimension_scaling/bootstrap_revision.txt).
+These records identify the code, inputs, and outputs used for the revised manuscript.
+
 Run every command from the repository root.  Each script writes per-trial results to `results/<experiment>/trials.csv`
 and then plots from them.  `--plot-only` skips the experiment and regenerates the figures and tables from
 the shipped CSVs, in seconds.
@@ -242,6 +281,7 @@ python -m experiments.adversarial_intensity
 python -m experiments.robotarm_dimension_scaling   # MuJoCo
 python -m experiments.robotarm_slope_fit           # uses the output of robotarm_dimension_scaling
 python -m experiments.robotarm_scaling_summary     # re-plots the two robot-arm results above
+python -m experiments.robotarm_projection_validation --cached  # solver check on archived endpoints
 python -m experiments.robotarm_time_sweep          # MuJoCo
 python -m experiments.corner_angle_scaling
 python -m experiments.one_sided_lipschitz_horizon

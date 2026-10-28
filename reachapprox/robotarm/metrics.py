@@ -38,21 +38,21 @@ def farthest_point_coreset(points: np.ndarray, max_points: int, rng: np.random.G
     return points[selected]
 
 
-def _distance_to_segment(points: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    ab = b - a
-    denom = np.dot(ab, ab)
-    if denom <= 1e-15:
-        return np.linalg.norm(points - a, axis=1)
-    t = np.clip(np.sum((points - a) * ab, axis=1) / denom, 0.0, 1.0)
-    return np.linalg.norm(points - (a + t[:, None] * ab), axis=1)
+def _convex_hull_candidates(points: np.ndarray, vertices: np.ndarray) -> np.ndarray:
+    """Feasible projection candidates from normalized, equality-penalized NNLS.
 
-
-def _distances_to_convex_hull(points: np.ndarray, vertices: np.ndarray) -> np.ndarray:
-    """dist(z, conv(vertices)) via nonnegative least squares over simplex weights."""
+    The finite equality penalty does not ensure an exact Euclidean projection.
+    Normalization makes the candidate a convex combination (up to roundoff).
+    """
     if vertices.shape[0] == 1:
-        return np.linalg.norm(points - vertices[0], axis=1)
+        return np.broadcast_to(vertices[0], points.shape).copy()
     if vertices.shape[0] == 2:
-        return _distance_to_segment(points, vertices[0], vertices[1])
+        ab = vertices[1] - vertices[0]
+        denom = np.dot(ab, ab)
+        if denom <= 1e-15:
+            return np.broadcast_to(vertices[0], points.shape).copy()
+        t = np.clip(np.sum((points - vertices[0]) * ab, axis=1) / denom, 0.0, 1.0)
+        return vertices[0] + t[:, None] * ab
 
     scale = max(1.0, float(np.linalg.norm(vertices, axis=1).max()))
     system = np.vstack([vertices.T / scale, NNLS_EQUALITY_WEIGHT * np.ones(vertices.shape[0])])
@@ -60,17 +60,60 @@ def _distances_to_convex_hull(points: np.ndarray, vertices: np.ndarray) -> np.nd
     rhs[-1] = NNLS_EQUALITY_WEIGHT
     maxiter = max(3 * vertices.shape[0], 1000)
 
-    distances = np.empty(points.shape[0], dtype=float)
+    candidates = np.empty_like(points, dtype=float)
     for index, point in enumerate(points):
         rhs[:-1] = point / scale
         weights, _ = nnls(system, rhs, maxiter=maxiter)
         total = weights.sum()
         if total <= np.finfo(float).eps:
-            distances[index] = np.linalg.norm(vertices - point, axis=1).min()
+            candidates[index] = vertices[np.argmin(np.linalg.norm(vertices - point, axis=1))]
         else:
-            distances[index] = np.linalg.norm(point - (weights / total) @ vertices)
-    distances[distances < NNLS_ZERO_TOL] = 0.0
+            candidates[index] = (weights / total) @ vertices
+    return candidates
+
+
+def _distances_to_convex_hull(points: np.ndarray, vertices: np.ndarray) -> np.ndarray:
+    """Approximate hull distances; see ``convex_hull_projection_certificate``.
+
+    Before the zero threshold the feasible-candidate distances are upper bounds
+    in exact arithmetic. The reference cloud is a separate approximation.
+    """
+    distances = np.linalg.norm(points - _convex_hull_candidates(points, vertices), axis=1)
+    if vertices.shape[0] > 2:
+        distances[distances < NNLS_ZERO_TOL] = 0.0
     return distances
+
+
+def convex_hull_projection_certificate(
+    points: np.ndarray, vertices: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return reported distances and numerical primal/dual distance bounds.
+
+    For a feasible candidate y and z outside it, let u = (y-z)/||y-z||.
+    Cauchy--Schwarz gives max(0, min_i u.T (v_i-z)) <= dist(z, conv(V))
+    <= ||y-z||. The bound width equals the Frank--Wolfe gap divided by
+    ||y-z|| until the lower bound reaches zero. No second optimization is needed.
+
+    A conservative roundoff cushion is applied to both bounds. These are
+    floating-point diagnostics, not interval-arithmetic certificates. The
+    reported NNLS distances include the production 1e-8 zero threshold; the
+    analytic one-/two-vertex branches retain their unthresholded distances.
+    """
+    candidates = _convex_hull_candidates(points, vertices)
+    residuals = candidates - points
+    raw = np.linalg.norm(residuals, axis=1)
+    lower = np.zeros_like(raw)
+    for index in np.flatnonzero(raw):
+        direction = residuals[index] / raw[index]
+        lower[index] = max(0.0, float(np.min((vertices - points[index]) @ direction)))
+    magnitude = 1.0 + np.linalg.norm(points, axis=1) + np.max(np.linalg.norm(vertices, axis=1))
+    cushion = 64 * np.finfo(float).eps * vertices.shape[1] * magnitude
+    lower = np.maximum(0.0, lower - cushion)
+    upper = raw + cushion
+    distances = raw.copy()
+    if vertices.shape[0] > 2:
+        distances[distances < NNLS_ZERO_TOL] = 0.0
+    return distances, lower, upper
 
 
 def convex_hull_directed_hausdorff(

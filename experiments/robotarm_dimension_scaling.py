@@ -21,6 +21,7 @@ Outputs (results/robotarm_dimension_scaling/):
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -47,6 +48,17 @@ IMPROVEMENT_CSV = OUT_DIR / "adversarial_improvement.csv"
 TITLES = {"uniform": "Robot-Arm Uniform Sampling", "adversarial": "Robot-Arm Adversarial Sampling"}
 
 
+@dataclass
+class SeedCurve:
+    budgets: np.ndarray
+    errors: tuple[np.ndarray, ...]
+    records: tuple[np.ndarray, ...]
+
+    @property
+    def means(self) -> np.ndarray:
+        return np.array([errors.mean() for errors in self.errors])
+
+
 def directed_error(metric: str, ref: np.ndarray, samples: np.ndarray, seed: int) -> float:
     if metric == "point_cloud":
         return point_cloud_directed_hausdorff(ref, samples)
@@ -68,6 +80,10 @@ def run_experiment(methods, link_counts, budgets, n_seeds: int, metric: str) -> 
             for budget in budgets:
                 errors = []
                 for seed_index in range(n_seeds):
+                    # Preserve the saved experiment's seed convention. Some
+                    # budgets share actual RNG seeds; the bootstrap below
+                    # clusters these repeated seeds instead of treating all
+                    # budget rows as independent experimental units.
                     seed = EXPERIMENT_SEED + 10_000 * n + 100 * seed_index + budget
                     rng = np.random.default_rng(seed)
                     ref = Y_ref[rng.choice(N_REF, size=REF_SUBSET, replace=False)]
@@ -92,16 +108,71 @@ def run_experiment(methods, link_counts, budgets, n_seeds: int, metric: str) -> 
     return rows
 
 
-def mean_errors(rows: list[dict]) -> dict[tuple[str, int], tuple[np.ndarray, np.ndarray]]:
-    """(method, n) -> (budgets, per-budget error arrays of shape (n_budgets, n_seeds))."""
-    grouped: dict[tuple[str, int, int], list[float]] = {}
+def mean_errors(rows: list[dict]) -> dict[tuple[str, int], SeedCurve]:
+    """Group errors and their actual experimental record identifiers by budget.
+
+    Saved adversarial rows store ``seed = base_seed + N``.  A base seed
+    identifies one complete record with a shared reference subset and random
+    stream across budgets. Uniform rows use the actual RNG seed as their
+    identifier: the seed formula can reuse a stream at different budgets.
+    Sorting groups and records makes both methods insensitive to CSV order.
+    """
+    grouped: dict[tuple[str, int, int], dict[int, float]] = {}
     for row in rows:
-        grouped.setdefault((row["method"], int(row["n"]), int(row["N"])), []).append(float(row["error"]))
+        method, n, budget = row["method"], int(row["n"]), int(row["N"])
+        record = int(row["seed"]) - budget if method == "adversarial" else int(row["seed"])
+        group = grouped.setdefault((method, n, budget), {})
+        if record in group:
+            raise ValueError(f"Duplicate seed record {record} for {method}, n={n}, N={budget}")
+        group[record] = float(row["error"])
     out = {}
     for method, n in sorted({(m, n) for m, n, _ in grouped}):
         budgets = np.array(sorted(N for m, k, N in grouped if (m, k) == (method, n)))
-        out[(method, n)] = (budgets, np.array([grouped[(method, n, N)] for N in budgets]))
+        groups = [grouped[(method, n, N)] for N in budgets]
+        if method == "adversarial" and any(group.keys() != groups[0].keys() for group in groups[1:]):
+            raise ValueError(f"Incomplete adversarial seed records for n={n}: base seeds must match across budgets")
+        records = tuple(np.array(sorted(group)) for group in groups)
+        errors = tuple(np.array([group[seed] for seed in seeds]) for group, seeds in zip(groups, records))
+        out[(method, n)] = SeedCurve(budgets, errors, records)
     return out
+
+
+def cluster_bootstrap_means(curve: SeedCurve, rng: np.random.Generator, n_bootstrap: int) -> np.ndarray:
+    """Resample unique RNG-seed clusters in an incomplete budget panel.
+
+    Each sampled seed's integer multiplicity is shared by all its available
+    budgets. Divide each budget's weighted sum by its own available count;
+    missing records are not imputed as zero. Reject draws with an empty budget.
+    For very sparse panels the rejection safeguard raises an explicit error.
+    """
+    unique_records = np.unique(np.concatenate(curve.records))
+    n_records = len(unique_records)
+    available = np.zeros((len(curve.budgets), n_records), dtype=int)
+    panel = np.zeros_like(available, dtype=float)
+    for k, (records, errors) in enumerate(zip(curve.records, curve.errors)):
+        indices = np.searchsorted(unique_records, records)
+        available[k, indices] = 1
+        panel[k, indices] = errors
+    if np.any(available.sum(axis=1) == 0):
+        raise ValueError("Every budget must contain at least one seed record")
+
+    accepted = []
+    remaining = n_bootstrap
+    attempts = 0
+    max_attempts = max(1000, 100 * n_bootstrap)
+    while remaining and attempts < max_attempts:
+        batch_size = min(max(remaining, 100), max_attempts - attempts)
+        weights = rng.multinomial(n_records, np.full(n_records, 1.0 / n_records), size=batch_size)
+        counts = weights @ available.T
+        valid = np.all(counts > 0, axis=1)
+        batch = (weights[valid] @ panel.T) / counts[valid]
+        batch = batch[:remaining]
+        accepted.append(batch)
+        remaining -= len(batch)
+        attempts += batch_size
+    if remaining:
+        raise ValueError("Too few cluster resamples cover every budget; the seed panel is too sparse")
+    return np.concatenate(accepted)
 
 
 def plot_method(curves, method: str) -> None:
@@ -109,10 +180,10 @@ def plot_method(curves, method: str) -> None:
     link_counts = sorted(n for m, n in curves if m == method)
     colors = plt.cm.viridis(np.linspace(0.12, 0.82, len(link_counts)))
     for n, color, marker in zip(link_counts, colors, ("o", "s", "D")):
-        budgets, values = curves[(method, n)]
-        mean, lo, hi = mean_ci95(values, axis=1)
-        ax.plot(budgets, mean, color=color, marker=marker, lw=2.0, ms=6, label=f"n={n}, dim={2 * n}")
-        ax.fill_between(budgets, lo, hi, color=color, alpha=0.20)
+        curve = curves[(method, n)]
+        mean, lo, hi = np.array([mean_ci95(values) for values in curve.errors]).T
+        ax.plot(curve.budgets, mean, color=color, marker=marker, lw=2.0, ms=6, label=f"n={n}, dim={2 * n}")
+        ax.fill_between(curve.budgets, lo, hi, color=color, alpha=0.20)
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("number of samples N", fontsize=18)
@@ -128,15 +199,27 @@ def plot_method(curves, method: str) -> None:
 
 
 def loglog_slopes(curves) -> list[dict]:
-    """Table 2: slope of log(mean error) vs log N over all budgets, with a 95% seed-bootstrap CI."""
+    """Fit slopes and 95% seed-bootstrap CIs conditional on the master reference cloud.
+
+    Use ``mean_errors`` to retain the record identifiers. Resample complete
+    adversarial base-seed records jointly. Uniform sampling can reuse actual
+    RNG seeds across budgets, so resample those clusters with shared weights,
+    normalizing each budget over its available records in the incomplete panel.
+    """
     rng = np.random.default_rng(0)
     rows = []
-    for (method, n), (budgets, values) in curves.items():
-        log_budgets = np.log(budgets)
-        slope = float(np.polyfit(log_budgets, np.log(values.mean(axis=1)), 1)[0])
-        # Resample seeds independently per budget and refit the slope of the mean curve.
-        picks = rng.integers(0, values.shape[1], size=(N_BOOTSTRAP, *values.shape))
-        boot_means = np.take_along_axis(values[None, :, :], picks, axis=2).mean(axis=2)
+    for method, n in sorted(curves):
+        curve = curves[(method, n)]
+        log_budgets = np.log(curve.budgets)
+        slope = float(np.polyfit(log_budgets, np.log(curve.means), 1)[0])
+        if method == "adversarial":
+            values = np.stack(curve.errors)
+            # Keep the established adversarial random stream and final CIs.
+            picks = rng.integers(0, values.shape[1], size=(N_BOOTSTRAP, *values.shape))
+            picks = np.broadcast_to(picks[:, :1, :], picks.shape)
+            boot_means = np.take_along_axis(values[None, :, :], picks, axis=2).mean(axis=2)
+        else:
+            boot_means = cluster_bootstrap_means(curve, rng, N_BOOTSTRAP)
         boot_slopes = np.polyfit(log_budgets, np.log(boot_means).T, 1)[0]
         low, high = np.quantile(boot_slopes, [0.025, 0.975])
         rows.append({"method": method, "n": n, "state_dim": 2 * n, "slope": slope,
@@ -150,9 +233,11 @@ def improvement_table(curves) -> list[dict]:
     for n in sorted(n for m, n in curves if m == "uniform"):
         if ("adversarial", n) not in curves:
             continue
-        budgets, uniform = curves[("uniform", n)]
-        _, adversarial = curves[("adversarial", n)]
-        for N, u, a in zip(budgets, uniform.mean(axis=1), adversarial.mean(axis=1)):
+        uniform = curves[("uniform", n)]
+        adversarial = curves[("adversarial", n)]
+        if not np.array_equal(uniform.budgets, adversarial.budgets):
+            raise ValueError(f"Uniform and adversarial budgets do not match for n={n}")
+        for N, u, a in zip(uniform.budgets, uniform.means, adversarial.means):
             rows.append({"n": n, "state_dim": 2 * n, "N": int(N), "uniform_mean": u, "adversarial_mean": a,
                          "absolute_improvement": u - a, "relative_improvement_percent": 100.0 * (u - a) / u})
     return rows

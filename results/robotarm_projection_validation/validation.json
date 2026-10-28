@@ -1,0 +1,20 @@
+{
+  "method": "Feasible normalized NNLS candidate and supporting-plane dual distance bound",
+  "arithmetic": "float64 with a 64 * eps * dimension * coordinate-scale cushion; not interval arithmetic",
+  "python_version": "3.12.3",
+  "numpy_version": "1.26.4",
+  "scipy_version": "1.17.1",
+  "mujoco_version": "3.8.1",
+  "nnls_equality_weight": 1000.0,
+  "zero_threshold": 1e-08,
+  "absolute_tolerance": 1e-05,
+  "directed_relative_tolerance": 0.001,
+  "endpoint_cache_sha256": "0a3f433d7bdd0c0deeb428bc1811b0b45826001de0c7eb89b86513ba38133d3f",
+  "n_cases": 15,
+  "n_queries": 480,
+  "max_point_distance_error_bound": 8.118252986522023e-09,
+  "max_directed_relative_error_bound": 2.5590242619929674e-08,
+  "passed": true,
+  "coverage": "Seed index 0, dimensions 4/6/8; uniform N=3/30/300/3000; adversarial N=30; 32 queries per case",
+  "limitations": "Reconstructed subsets, not all archived trials; no bound on finite-reference or integration error"
+}

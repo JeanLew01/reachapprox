@@ -1,0 +1,7 @@
+{
+  "baseline_commit": "25be4480199b0fca6cc22e5dc768eb268ae9474d",
+  "baseline_path": "reachapprox/robotarm/metrics.py",
+  "n_queries": 480,
+  "max_absolute_metric_change": 5.551115123125783e-17,
+  "comparison": "original per-point norm vs refactored batched norm, same NNLS candidates"
+}

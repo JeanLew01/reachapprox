@@ -1,0 +1,98 @@
+Robot-arm seed-bootstrap correction, 2026-10-28
+
+Base code commit: 25be4480199b0fca6cc22e5dc768eb268ae9474d.
+This record documents the 2026-10-28 TAC audit revision against that baseline.
+
+Adversarial CSV records are aligned by base_seed = seed - N. Each base seed
+uses one reference subset and one random stream across all sample budgets.
+The bootstrap now samples whole aligned records jointly across budgets.
+Duplicate or incomplete adversarial records are rejected.
+
+Uniform sampling also needs clustering: its saved seed formula is
+EXPERIMENT_SEED + 10000*n + 100*seed_index + N, which repeats actual RNG seeds
+across some budgets. For example seed 97831 occurs at N=100 and N=300 for
+the 2-link arm. Each dimension has 240 observations (30 per budget), but only
+179 unique RNG seeds. Of these, 142 occur once, 14 at two budgets, 22 at three
+budgets and 1 at four budgets. Repeated seeds share the same reference subset
+and random stream. Endpoints are not strictly nested: sample_initial_box draws
+all joint positions before velocities, so the stream pairing changes with N.
+
+The uniform bootstrap draws 179 clusters with replacement from the union of
+actual RNG seeds. Each selected seed receives one shared integer multiplicity
+at all budgets where it was observed. Each budget's weighted error sum is
+divided by its own available-record count; unobserved budget/seed combinations
+are not filled with zero. This preserves the observed dependence in the
+incomplete seed panel without inventing missing experiments. Resamples with
+an empty budget are discarded and redrawn (probability at most 4.4e-14 per
+replicate for this saved panel). A bounded retry guard rejects excessively
+sparse panels that cannot provide enough nonempty replicates.
+
+This is an approximate percentile cluster-bootstrap confidence interval,
+using 2,000 replicates and RNG seed 0, conditional on the fixed master reference
+cloud of 20,000 endpoints per arm (REFERENCE_SEED + n) and the observed seed
+panel. It does not measure variability from a new master reference cloud or
+provide an exact finite-sample coverage guarantee. Adversarial resampling uses
+30 complete base-seed records; uniform resampling uses 179 incomplete actual-
+seed clusters, each budget retaining its 30 original observations for the
+point estimate. All 2,000-point reference subsets retain their grouping.
+
+Independent budget resampling is inappropriate when actual seeds overlap.
+Grouping uniform rows by nominal seed_index would invent other dependencies.
+Stratification by the pattern of observed budgets would freeze singleton
+strata; the union-cluster bootstrap instead captures the observed cluster
+covariance with per-budget normalization. The experiment's original seeds
+and data remain unchanged so the saved results can still be reproduced.
+
+Updated adversarial slope intervals (95 percent):
+state_dim  slope                  ci95_low              ci95_high
+4         -0.42159786240994734    -0.4378624468026677    -0.40541197989326666
+6         -0.2866338513424669     -0.29407807733839963   -0.2788501058979993
+8         -0.23364223098362583    -0.24049467794359208   -0.22740758372347014
+
+Updated uniform slope intervals (95 percent):
+state_dim  slope                  ci95_low              ci95_high
+4         -0.33336606942723634    -0.3422588364561047    -0.3241021593824893
+6         -0.2534845908603147     -0.2602276481923967    -0.2465287100443704
+8         -0.21647159271594793    -0.22279378800813512   -0.21054798571794622
+
+Relative CI-width increases versus the original saved intervals are 16.12,
+6.07 and 9.71 percent for adversarial sampling, and 5.45, 10.98 and 4.09 percent
+for uniform sampling. These are the configured 2,000-replicate results, not
+the audit's separate 3,000-replicate diagnostic calculation. All fitted point
+slopes remain exactly unchanged. The uniform correction preserves the already
+corrected adversarial intervals by retaining that resampling stream.
+
+Reproduction from the saved trials (no simulations):
+  .venv/bin/python -m experiments.robotarm_dimension_scaling --plot-only
+  .venv/bin/python -m experiments.robotarm_scaling_summary
+
+Verification:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/test_robotarm_bootstrap.py -q
+  11 tests passed: complete shared-record slope dependence for both methods;
+  disjoint uniform budget uncertainty; synthetic and saved-data CSV-shuffle
+  invariance; missing/duplicate adversarial record rejection; incomplete-panel
+  shared weights and denominator normalization; empty resample redraws;
+  rejection of empty observed budgets; unchanged saved point slopes and
+  already corrected adversarial intervals.
+  Disabling plugin autoload avoids an unrelated system ROS pytest plugin
+  requiring an unavailable yaml module.
+
+trials.csv, adversarial_improvement.csv, both per-method PNGs, and the slope-fit
+parameter CSV are byte-identical to the base commit. No slope-fit rerun is
+needed because its input point slopes are unchanged. Only the interval entries
+of loglog_slopes.csv and the summary's right-panel error bars change. Existing
+CSV line endings are retained.
+
+Figure provenance:
+The unchanged summary plotting script plus the original slope CSV reproduces
+the committed summary PNG byte-for-byte:
+  SHA256 7363ccd68ddf2173794ec297ce4e68dd8b69ca9214c5cb61e0372a16505a122f
+The regenerated summary with corrected intervals has:
+  SHA256 80ce766e4c61f4145acf32079e263841cdac62c6a6f4324bc8d73c708660a036
+The generated PNG is 4271 x 1539 pixels. The pre-revision TAC manuscript PNG
+was 4224 x 1501; visual inspection shows the same layout and labels with
+slightly different surrounding whitespace. Replacing it with this generated
+artifact makes the manuscript's plotting source explicit.
+
+Saved-trial SHA256:
+6ef602fc006c86ba9e38cf93d0f06196504625cb6c8438bda107e0c58b5cb6f5

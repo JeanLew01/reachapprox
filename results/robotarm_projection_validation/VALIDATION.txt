@@ -1,0 +1,75 @@
+Robot-arm convex-hull projection validation
+Audit follow-up: 2026-10-28
+
+The production solver uses nonnegative least squares with equality penalty
+weight 1000 and then normalizes its weights. The normalized candidate belongs
+to the sample convex hull up to floating-point roundoff; its distance need not
+be the exact Euclidean projection distance. NNLS distances below 1e-8 are set
+to zero. The analytic one- and two-vertex cases remain unthresholded.
+
+Method
+For query z and feasible candidate y, put d = ||y-z|| and u = (y-z)/d.
+For d > 0, the true distance to the convex hull obeys
+
+  max(0, min_i u^T(v_i-z)) <= distance(z, conv(V)) <= d.
+
+The left inequality follows from Cauchy--Schwarz for every point in the hull.
+The untruncated gap between these bounds equals the Frank--Wolfe objective
+gap divided by d. A zero residual gives zero distance in exact arithmetic.
+The implementation widens the interval by
+64 * machine_epsilon * state_dimension * (1 + ||z|| + max_i ||v_i||).
+These are float64 numerical certificates with a conservative roundoff cushion,
+not formally verified interval-arithmetic bounds. The reported error bound
+also accounts for the solver's 1e-8 zero threshold.
+
+Coverage and provenance
+The original results contain per-seed errors but no saved endpoint clouds.
+Using the original experimental RNG conventions, this check reconstructed seed
+record 0 at T = 1 in state dimensions 4, 6, and 8, for uniform sample budgets
+3, 30, 300, and 3000 and adversarial budget 30. The earlier adversarial budgets'
+random draws were consumed to preserve the stream. For each of these 15 cases,
+32 queries were selected from its original 2000-index reference subset: the
+first 16 entries and the 16 remaining initial states with greatest norm.
+The master initial reference pool retains the original 20000 draws.
+Only those 32 reference trajectories were propagated, not the full pool.
+Queries were selected before evaluating projection errors.
+
+The endpoint clouds, reference indices, seed identifiers, MuJoCo version and
+their SHA-256 hash are archived in endpoints.npz and validation.json. These
+are representative reconstructed inputs, not recovered original endpoints.
+Versions: Python 3.12.3, NumPy 1.26.4, SciPy 1.17.1, MuJoCo 3.8.1.
+
+Result
+All 480 query projections passed the predeclared checks:
+  absolute point-distance error bound <= 1e-5;
+  relative error bound for each subset's maximum distance <= 0.001 (0.1%).
+The largest absolute bound was 8.118252986522023e-9.
+The largest relative bound for a subset maximum was 2.5590242619929674e-8.
+Per-query bounds are in point_bounds.csv; per-case maxima are in summary.csv.
+This check found no material projection discrepancy on the reconstructed
+inputs and gives no reason to revise the saved scientific results.
+
+The production refactor was also compared with metrics.py from audited commit
+25be4480199b0fca6cc22e5dc768eb268ae9474d on the same 480 queries. Its largest
+absolute distance change was 5.551115123125783e-17 (scalar versus batched norm
+roundoff), recorded in compatibility.json. The NNLS solver and its parameters
+are unchanged. Analytic one-/two-vertex results and their lack of thresholding
+are covered by a regression test.
+
+Reproduction from archived inputs, without MuJoCo simulation:
+  OPENBLAS_NUM_THREADS=1 .venv/bin/python -m experiments.robotarm_projection_validation --cached
+
+Reconstruct inputs and revalidate (requires MuJoCo, takes several minutes):
+  OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m experiments.robotarm_projection_validation --workers 8
+
+Tests against exact box distances, an intentionally poor feasible candidate,
+and the zero-threshold and analytic cases:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/test_robotarm_metrics.py -q
+
+Limits
+This checks one seed record per selected condition, 32 queries per case, and
+only a small adversarial budget. It does not bound solver error on every saved
+trial, error from finite reference sampling, MuJoCo integration error, or any
+effect of a simulator version difference. The manuscript should therefore say
+that finite reference sampling and numerical projection introduce
+approximation error, without claiming exact hull distances or global accuracy.
